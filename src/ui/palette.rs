@@ -617,7 +617,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("agymux run --project '{}'", proj),
+                    &format!("ax run --project '{}'", proj),
                 ])
                 .status();
         }
@@ -630,7 +630,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                         "-n",
                         "[fork]",
                         &format!(
-                            "agymux run --project '{}' --conversation '{}'",
+                            "ax run --project '{}' --conversation '{}'",
                             proj, conv_id
                         ),
                     ])
@@ -641,7 +641,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                         "command-prompt",
                         "-p",
                         "Fork conversation ID: ",
-                        &format!("new-window -n '[fork]' 'agymux run --project \"{}\" --conversation \"%%\"'", proj),
+                        &format!("new-window -n '[fork]' 'ax run --project \"{}\" --conversation \"%%\"'", proj),
                     ])
                     .status();
             }
@@ -652,7 +652,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "command-prompt",
                     "-p",
                     "New worktree branch: ",
-                    &format!("new-window -n '[%%]' 'git worktree add -b %% .worktrees/%% && cd .worktrees/%% && agymux run --project \"{}\"'", proj),
+                    &format!("new-window -n '[%%]' 'git worktree add -b %% .worktrees/%% && cd .worktrees/%% && ax run --project \"{}\"'", proj),
                 ])
                 .status();
         }
@@ -663,7 +663,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "-p",
                     "Flags (e.g. --model 'Gemini Pro' --effort high): ",
                     &format!(
-                        "new-window -n 'agy [custom]' 'agymux run --project \"{}\" %%'",
+                        "new-window -n 'agy [custom]' 'ax run --project \"{}\" %%'",
                         proj
                     ),
                 ])
@@ -688,7 +688,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "85%",
                     "-h",
                     "80%",
-                    "agymux switch",
+                    "ax switch",
                 ])
                 .status();
         }
@@ -701,7 +701,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "70%",
                     "-h",
                     "70%",
-                    "agymux project",
+                    "ax project",
                 ])
                 .status();
         }
@@ -714,7 +714,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "65%",
                     "-h",
                     "70%",
-                    "agymux helper",
+                    "ax helper",
                 ])
                 .status();
         }
@@ -773,7 +773,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "75%",
                     "-h",
                     "60%",
-                    "agymux bind",
+                    "ax bind",
                 ])
                 .status();
         }
@@ -826,7 +826,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     ""
                 };
                 let reload_cmd = format!(
-                    "agymux run --project '{}' --conversation '{}'{}",
+                    "ax run --project '{}' --conversation '{}'{}",
                     proj, cid, rc_flag
                 );
 
@@ -885,7 +885,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("agymux run -H claude --project '{}'", proj),
+                    &format!("ax run -H claude --project '{}'", proj),
                 ])
                 .status();
         }
@@ -895,7 +895,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("agymux run -H agy --project '{}'", proj),
+                    &format!("ax run -H agy --project '{}'", proj),
                 ])
                 .status();
         }

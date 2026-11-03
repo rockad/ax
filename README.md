@@ -1,11 +1,23 @@
-# agymux (ax) — OpenCode-Style Cockpit for Google Antigravity
+# ax — Terminal Cockpit & Multi-Harness Multiplexor for AI Coding Agents
 
-[![Crates.io](https://img.shields.io/crates/v/agymux.svg)](https://crates.io/crates/agymux)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**agymux** (also installed as **`ax`**) is a high-performance, single-binary terminal multiplexer cockpit for Google Antigravity (`agy`) inside `tmux`.
+**`ax`** is a high-performance terminal cockpit and multi-harness multiplexer for AI coding agents inside `tmux`.
 
-It combines OpenCode's visual delight and spatial workflow ergonomics (top tab strip, two-pane switcher, command palette, live transcript previews, git worktree isolation, protected mouse tab closing, and vertical IDE sidebar) with Antigravity's deep autonomous engine — built in native Rust for sub-millisecond cold starts and zero runtime dependencies.
+It combines OpenCode's visual delight and spatial workflow ergonomics (top tab strip, two-pane switcher, command palette, live transcript previews, git worktree isolation, protected mouse tab closing, and vertical IDE sidebar) with first-class multi-harness execution across the premier AI coding agents — built in native Rust for sub-millisecond cold starts and zero runtime dependencies.
+
+---
+
+## Supported Harnesses
+
+`ax` provides unified window lifecycle management, prompt-driven dynamic naming, and dedicated shortcuts for:
+
+- **Google Antigravity (`agy`)** (`󰚩`): `Ctrl+Space n` / `т`
+- **Claude Code (`claude`)** (`󰊠`): `Ctrl+Space c` / `с`
+- **OpenCode (`opencode`)** (`󰘐`): `Ctrl+Space o` / `щ`
+- **Codex (`codex`)** (`󱚣`): `Ctrl+Space x` / `ч`
+- **Plain Terminal (`term`)** (``): `Ctrl+Space t` / `е`
+- **Custom Pluggable Harnesses**: Configured in `~/.config/ax/config.toml` (`[harnesses.<name>]`) or modular `~/.config/ax/harnesses/*.toml` files with custom binary, icon, hotkey, cyrillic hotkey, args, and environment variables.
 
 ---
 
@@ -13,14 +25,15 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 - **Sub-Millisecond Cold-Start (< 1 ms):** Written in Rust with Ratatui and bundled C-SQLite. Modals launch in ~700 µs inside `tmux display-popup`.
 - **Zero External CLI Dependencies:** Bundled SQLite (`rusqlite`), streaming NDJSON parser (`serde_json`), and built-in fuzzy matching (`nucleo-matcher`). Does not require `fzf`, `jq`, or external `sqlite3`.
-- **Dual Binaries (`agymux` & `ax`):** Both commands are built and installed identically. Use `agymux` for descriptive clarity and `ax` for ultra-fast 2-keystroke execution.
-- **Monokai Pro Octagon Top Tabs:** Visual status strip positioned at the top of the terminal (`status-position top`) styled in `#282a3a` warm dark grey with crisp rectangular highlighted active tabs, 1-line breathing spacer, and live status icons (`󰢹`, `󰛌`, `󰂞`, `󰅖`).
+- **First-Class Multi-Harness Ergonomics:** Launch and switch between Antigravity, Claude Code, OpenCode, Codex, and terminal shells inside a single unified session with dedicated icons in the tab strip.
+- **Pluggable Harness Architecture:** Define custom AI harnesses with custom hotkeys and environment overrides in `~/.config/ax/harnesses/*.toml`.
+- **Top Tab Strip with Dynamic Harness Icons:** Visual status strip positioned at the top of the terminal (`status-position top`) styled in `#282a3a` warm dark grey with crisp rectangular highlighted active tabs, breathing spacer, live harness icons (`󰚩`, `󰊠`, `󰘐`, `󱚣`, ``), and status badges (`󰢹`, `󰛌`, `󰂞`, `󰅖`).
 - **Protected Mouse Tab Ergonomics:** Left-click tabs to switch, click `󰅖` or middle-click to close (with an automatic confirmation guard protecting the last tab from closing the session), and right-click for a native context menu.
-- **Vertical IDE Sidebar Rail (`Ctrl+Space B` / `И`):** Toggle an interactive 42-column sidebar rail (`agymux layout`) showing git branches, conversation turn counts, token metrics, and instant hotkey selection (`1`..`9`).
+- **Vertical IDE Sidebar Rail (`Ctrl+Space B` / `И`):** Toggle an interactive 42-column sidebar rail (`ax layout`) showing git branches, conversation turn counts, token metrics, and instant hotkey selection (`1`..`9`).
 - **Two-Pane Conversation Switcher (`Ctrl+Space s` / `ы`):**
   - **Left Pane (45%):** Active open tabs and historical project conversations with fuzzy search. Supports `Tab` or `Ctrl+A` to toggle between **Local Project** and **Global Machine** search scope.
   - **Right Pane (55%):** Live rich transcript preview showing token counts, user prompt, latest turn excerpt, and executed tools.
-- **Global Project Hopper (`Ctrl+Space o` / `щ`):** Search and jump between repositories across `~/projects/` and active `agy-*` sessions.
+- **Global Project Hopper (`Ctrl+Space P` / `З`):** Search and jump between repositories across `~/projects/` and active `agy-*` sessions.
 - **Quick Command Palette (`Ctrl+Space p` / `з`):** Interactive action palette (tab rename, bind, fork, new worktree, launch flags, quit cockpit, cheatsheet).
 - **Git Worktree Isolation (`Ctrl+Space w` / `ц`):** Create isolated git worktrees on demand under `.worktrees/<branch>`.
 - **Bilingual Keymap Resilience:** Every shortcut features paired English and Cyrillic (RussianWin) bindings so CapsLock layout switching never produces dead keys.
@@ -28,22 +41,25 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 ---
 
-## Dual-Access Shortcuts Cheatsheet
+## Shortcuts Cheatsheet
 
 | Action | Direct Shortcut | Command Palette Name |
 | :--- | :--- | :--- |
 | **Switch Tab / Session** | `Ctrl+Space s` / `S` / `ы` / `Ы` | `🗂️ Switch Tab / Session` |
-| **Switch Project** | `Ctrl+Space o` / `O` / `щ` / `Щ` | `🌐 Open Project` |
-| **Command Palette** | `Ctrl+Space p` / `P` / `з` / `З` | `⚙️ Open Command Palette` |
+| **Switch Project** | `Ctrl+Space P` / `З` | `🌐 Open Project` |
+| **Command Palette** | `Ctrl+Space p` / `з` | `⚙️ Open Command Palette` |
 | **Keyboard Cheatsheet** | `Ctrl+Space ?` / `h` / `H` / `р` / `Р` | `❓ Keyboard Shortcuts & Help` |
-| **New Tab** | `Ctrl+Space c` / `C` / `с` / `С` | `➕ New Tab` |
+| **New Antigravity Tab** | `Ctrl+Space n` / `N` / `т` / `Т` | `➕ New Tab (Antigravity)` |
+| **New Claude Code Tab** | `Ctrl+Space c` / `C` / `с` / `С` | `➕ New Tab (Claude Code)` |
+| **New OpenCode Tab** | `Ctrl+Space o` / `O` / `щ` / `Щ` | `➕ New Tab (OpenCode)` |
+| **New Codex Tab** | `Ctrl+Space x` / `X` / `ч` / `Ч` | `➕ New Tab (Codex)` |
 | **New Plain Terminal Tab** | `Ctrl+Space t` / `T` / `е` / `Е` | `💻 New Plain Terminal Tab` |
 | **Switch to Main Terminal** | `Ctrl+Space m` / `M` / `ь` / `Ь` | `🖥️ Switch to Main Terminal (main)` |
 | **New Worktree Tab** | `Ctrl+Space w` / `W` / `ц` / `Ц` | `📁 New Worktree Tab (Branch)` |
 | **Rename Active Tab** | `Ctrl+Space r` / `R` / `к` / `К` | `📝 Rename Active Tab` |
 | **Fork Conversation** | `Ctrl+Space f` / `F` / `а` / `А` | `🌿 Fork Conversation (-c)` |
 | **Launch with Custom Flags** | `Ctrl+Space l` / `L` / `д` / `Д` | `⚙️ Launch with Custom Flags` |
-| **Close Tab** | `Ctrl+Space x` / `X` / `ч` / `Ч` | `🧹 Close Tab` |
+| **Close Tab** | `Ctrl+Space q` / `Q` / `й` / `Й` / `&` | `🧹 Close Tab` |
 | **Detach Session** | `Ctrl+Space d` / `D` / `в` / `В` | `🚪 Detach Session` |
 | **Kill Session** | `Ctrl+Space k` / `K` / `л` / `Л` | `🛑 Kill Session (Exit Completely)` |
 | **Direct Tab Jump** | `Alt+1` .. `9` / `Ctrl+Space 1` .. `9` | N/A |
@@ -73,10 +89,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 ## Layout Modes: Horizontal Tabs & Vertical IDE Rail
 
-`agymux` supports both horizontal tab strips and a vertical OpenCode-style sidebar rail:
+`ax` supports both horizontal tab strips and a vertical OpenCode-style sidebar rail:
 
-- **Horizontal Tabs (Default):** Rendered via tmux status bar at top (or bottom) with 1-line breathing spacer.
-- **Vertical IDE Rail:** Toggle with `Ctrl+Space B` / `И`, the command palette, or `agymux layout`. Hides horizontal status bar and opens a 42-column interactive TUI sidebar pane on the left showing active windows, git branches, turn metrics, and hotkeys (`1`..`9`, `x` to close, `Enter` to switch, `q` to quit). Automatically adapts to a compact 10-column icon bar on narrow terminals (< 106 cols).
+- **Horizontal Tabs (Default):** Rendered via tmux status bar at top (or bottom) with breathing spacer.
+- **Vertical IDE Rail:** Toggle with `Ctrl+Space B` / `И`, the command palette, or `ax layout`. Hides horizontal status bar and opens a 42-column interactive TUI sidebar pane on the left showing active windows, git branches, turn metrics, and hotkeys (`1`..`9`, `x` to close, `Enter` to switch, `q` to quit). Automatically adapts to a compact 10-column icon bar on narrow terminals (< 106 cols).
 
 ---
 
@@ -91,8 +107,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 ## Configuration
 
-Detailed documentation for all configuration options, visual layout diagrams, and preset recipes is available in:
-👉 [**agymux Configuration Reference**](docs/configuration.md)
+Detailed documentation for all configuration options, multi-harness schemas, visual layout diagrams, and preset recipes is available in:
+👉 [**ax Configuration Reference**](docs/configuration.md)
+
+Default configuration path: `~/.config/ax/config.toml`
 
 ---
 
@@ -100,18 +118,12 @@ Detailed documentation for all configuration options, visual layout diagrams, an
 
 ### From Source (Cargo)
 ```bash
-git clone https://github.com/rockad/agymux.git
-cd agymux
+git clone https://github.com/rockad/ax.git
+cd ax
 cargo build --release
 
-# Install both agymux and ax binaries
-cp target/release/agymux ~/.local/bin/
+# Install binary
 cp target/release/ax ~/.local/bin/
-```
-
-### Via Crates.io
-```bash
-cargo install agymux
 ```
 
 ---
@@ -119,8 +131,7 @@ cargo install agymux
 ## CLI Usage
 
 ```text
-Usage: agymux [OPTIONS] [COMMAND]
-   or: ax [OPTIONS] [COMMAND]
+Usage: ax [OPTIONS] [COMMAND]
 
 Commands:
   attach   Attach to active session or start session in current directory (default)
@@ -134,7 +145,7 @@ Commands:
   preview  Render rich preview for a conversation ID
   layout   Toggle OpenCode-style vertical IDE sidebar layout or switch mode
   rail     Run interactive vertical sidebar rail TUI
-  ls       List active agymux sessions
+  ls       List active ax sessions
   help     Print help
 
 Options:

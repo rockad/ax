@@ -138,7 +138,8 @@ impl TabRegistry {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        let harness_str = harness.unwrap_or_default().as_str();
+        let harness_val = harness.unwrap_or_default();
+        let harness_str = harness_val.as_str();
 
         let tx = self.conn.transaction()?;
 

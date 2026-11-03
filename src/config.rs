@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -15,6 +16,26 @@ pub struct Config {
     pub tmux: TmuxConfig,
     #[serde(default)]
     pub tabs: Option<TabsConfig>,
+    #[serde(default)]
+    pub harnesses: HashMap<String, CustomHarnessConfig>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomHarnessConfig {
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub hotkey: Option<char>,
+    #[serde(default)]
+    pub cyrillic_hotkey: Option<char>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -280,20 +301,63 @@ impl Config {
         }
     }
 
-    /// Load configuration from file, falling back to defaults if not found
+    /// Load configuration from file, falling back to defaults if not found,
+    /// and merging any supplementary harness configs from harnesses/*.toml
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
-        if !path.exists() {
-            return Ok(Self::default());
-        }
+        let mut config: Config = if path.exists() {
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read config file at {:?}", path))?;
+            toml::from_str(&content)
+                .with_context(|| format!("Failed to parse config TOML at {:?}", path))?
+        } else {
+            Self::default()
+        };
 
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read config file at {:?}", path))?;
-        let mut config: Config = toml::from_str(&content)
-            .with_context(|| format!("Failed to parse config TOML at {:?}", path))?;
         if let Some(tabs) = config.tabs.take() {
             config.theme.tabs = tabs;
         }
+
+        // Supplementary harness configs from <config_dir>/harnesses/*.toml
+        for base_dir in [Self::primary_config_dir(), Self::config_dir()] {
+            let harnesses_dir = base_dir.join("harnesses");
+            if harnesses_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&harnesses_dir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.extension().and_then(|s| s.to_str()) == Some("toml") {
+                            if let Ok(content) = fs::read_to_string(&p) {
+                                #[derive(Deserialize)]
+                                struct HarnessFile {
+                                    #[serde(default)]
+                                    harness: Option<CustomHarnessConfig>,
+                                    #[serde(default)]
+                                    harnesses: Option<HashMap<String, CustomHarnessConfig>>,
+                                }
+
+                                if let Ok(file_cfg) = toml::from_str::<HarnessFile>(&content) {
+                                    if let Some(map) = file_cfg.harnesses {
+                                        for (k, v) in map {
+                                            config.harnesses.entry(k).or_insert(v);
+                                        }
+                                    }
+                                    if let Some(single) = file_cfg.harness {
+                                        if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                                            config.harnesses.entry(stem.to_string()).or_insert(single);
+                                        }
+                                    }
+                                } else if let Ok(single) = toml::from_str::<CustomHarnessConfig>(&content) {
+                                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                                        config.harnesses.entry(stem.to_string()).or_insert(single);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(config)
     }
 
@@ -562,5 +626,30 @@ max_width = 35
         assert_eq!(config.theme.tabs.min_width, 10);
         assert_eq!(config.theme.tabs.standard_width, 24);
         assert_eq!(config.theme.tabs.max_width, 35);
+    }
+
+    #[test]
+    fn test_custom_harness_config_deserialize() {
+        let toml_str = r#"
+[harnesses.aider]
+command = "aider"
+display_name = "Aider Chat"
+icon = "󰚩"
+hotkey = "a"
+cyrillic_hotkey = "ф"
+args = ["--no-auto-commits"]
+
+[harnesses.aider.env]
+ANTHROPIC_API_KEY = "test-key"
+"#;
+        let config: Config = toml::from_str(toml_str).expect("custom harness toml parses");
+        let aider = config.harnesses.get("aider").expect("aider harness found");
+        assert_eq!(aider.command.as_deref(), Some("aider"));
+        assert_eq!(aider.display_name.as_deref(), Some("Aider Chat"));
+        assert_eq!(aider.icon.as_deref(), Some("󰚩"));
+        assert_eq!(aider.hotkey, Some('a'));
+        assert_eq!(aider.cyrillic_hotkey, Some('ф'));
+        assert_eq!(aider.args, vec!["--no-auto-commits"]);
+        assert_eq!(aider.env.get("ANTHROPIC_API_KEY").map(String::as_str), Some("test-key"));
     }
 }

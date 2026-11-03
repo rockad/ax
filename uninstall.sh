@@ -1,37 +1,38 @@
 #!/usr/bin/env bash
-# uninstall.sh: Clean uninstaller for agymux
+# uninstall.sh: Clean uninstaller for ax
 
 set -euo pipefail
 
 BIN_DIR="${HOME}/.local/bin"
 TMUX_CONF="${HOME}/.config/tmux/tmux.conf"
-TMUX_AGY_CONF="${HOME}/.config/tmux/agymux.conf"
-TMUX_TABS_CONF="${HOME}/.config/tmux/agymux-tabs.conf"
+TMUX_AX_CONF="${HOME}/.config/tmux/ax.conf"
 
-echo "==> Uninstalling agymux..."
+echo "==> Uninstalling ax..."
 
-# 1. Remove binaries from ~/.local/bin
-for b in agymux ax agymux-tab-picker agymux-tab-runner agymux-palette agymux-project-picker agymux-helper agymux-preview; do
-    if [[ -L "$BIN_DIR/$b" || -f "$BIN_DIR/$b" ]]; then
-        echo "  -> Removing $BIN_DIR/$b"
-        rm -f "$BIN_DIR/$b"
-    fi
+# 1. Remove binary from ~/.local/bin
+if [[ -L "$BIN_DIR/ax" || -f "$BIN_DIR/ax" ]]; then
+    echo "  -> Removing $BIN_DIR/ax"
+    rm -f "$BIN_DIR/ax"
+fi
+
+# Clean up any legacy binaries or symlinks
+for legacy in agymux agemux agymux-tab-picker agymux-tab-runner agymux-palette agymux-project-picker agymux-helper agymux-preview; do
+    rm -f "${BIN_DIR}/$legacy"
 done
 
-# 2. Remove tmux config links
-for cfg in "$TMUX_AGY_CONF" "$TMUX_TABS_CONF"; do
-    if [[ -L "$cfg" || -f "$cfg" ]]; then
-        echo "  -> Removing $cfg"
-        rm -f "$cfg"
-    fi
-done
+# 2. Remove tmux config
+if [[ -L "$TMUX_AX_CONF" || -f "$TMUX_AX_CONF" ]]; then
+    echo "  -> Removing $TMUX_AX_CONF"
+    rm -f "$TMUX_AX_CONF"
+fi
+rm -f "${HOME}/.config/tmux/agymux.conf" "${HOME}/.config/tmux/agymux-tabs.conf"
 
 # 3. Strip directive from tmux.conf
 if [[ -f "$TMUX_CONF" ]]; then
-    if grep -q "agymux" "$TMUX_CONF"; then
+    if grep -q "ax.conf" "$TMUX_CONF" || grep -q "agymux" "$TMUX_CONF"; then
         echo "  -> Removing source directive from $TMUX_CONF"
         tmp=$(mktemp)
-        grep -v "agymux.conf" "$TMUX_CONF" | grep -v "agymux-tabs.conf" | grep -v "# Source agymux" > "$tmp" || true
+        grep -v "ax.conf" "$TMUX_CONF" | grep -v "agymux.conf" | grep -v "agymux-tabs.conf" | grep -v "# Source ax" | grep -v "# Source agymux" > "$tmp" || true
         mv "$tmp" "$TMUX_CONF"
     fi
 fi
@@ -42,4 +43,4 @@ if command -v tmux >/dev/null 2>&1 && tmux has-session 2>/dev/null; then
     tmux source-file "$TMUX_CONF" 2>/dev/null || true
 fi
 
-echo "==> agymux uninstalled cleanly."
+echo "==> ax uninstalled cleanly."

@@ -70,7 +70,7 @@ pub enum Commands {
         #[arg(short = 'n', long = "name")]
         name: Option<String>,
 
-        /// Target agent harness (agy, claude, term)
+        /// Target agent harness (agy, claude, opencode, codex, term, or custom)
         #[arg(short = 'H', long = "harness", default_value = "agy")]
         harness: String,
 
@@ -81,7 +81,7 @@ pub enum Commands {
 
     /// Internal process runner with instant prompt-based window naming
     Run {
-        /// Target agent harness (agy, claude, term)
+        /// Target agent harness (agy, claude, opencode, codex, term, or custom)
         #[arg(short = 'H', long = "harness", default_value = "agy")]
         harness: String,
 
@@ -96,7 +96,7 @@ pub enum Commands {
         conversation_id: String,
     },
 
-    /// List active agymux sessions
+    /// List active ax sessions
     Ls,
 
     /// Bind a conversation ID to the active tmux tab
@@ -119,7 +119,7 @@ pub enum Commands {
     #[command(hide = true)]
     Hook,
 
-    /// Install or update agymux lifecycle hook in Antigravity configuration
+    /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
 }
 
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_cli_default_no_args() {
-        let cli = Cli::try_parse_from(["agymux"]).expect("parsing succeeds");
+        let cli = Cli::try_parse_from(["ax"]).expect("parsing succeeds");
         assert!(cli.command.is_none());
         assert!(cli.project.is_none());
         assert!(cli.dir.is_none());
@@ -145,14 +145,14 @@ mod tests {
     #[test]
     fn test_cli_version_flag() {
         let err_v =
-            Cli::try_parse_from(["agymux", "-v"]).expect_err("-v should trigger version display");
+            Cli::try_parse_from(["ax", "-v"]).expect_err("-v should trigger version display");
         assert_eq!(err_v.kind(), clap::error::ErrorKind::DisplayVersion);
 
         let err_upper =
-            Cli::try_parse_from(["agymux", "-V"]).expect_err("-V should trigger version display");
+            Cli::try_parse_from(["ax", "-V"]).expect_err("-V should trigger version display");
         assert_eq!(err_upper.kind(), clap::error::ErrorKind::DisplayVersion);
 
-        let err_long = Cli::try_parse_from(["agymux", "--version"])
+        let err_long = Cli::try_parse_from(["ax", "--version"])
             .expect_err("--version should trigger version display");
         assert_eq!(err_long.kind(), clap::error::ErrorKind::DisplayVersion);
     }
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn test_cli_global_flags() {
         let cli = Cli::try_parse_from([
-            "agymux",
+            "ax",
             "--project",
             "my-proj",
             "--dir",
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_cli_attach_subcommand_with_forwarded_args() {
-        let cli = Cli::try_parse_from(["agymux", "attach", "--", "--model", "gemini-flash"])
+        let cli = Cli::try_parse_from(["ax", "attach", "--", "--model", "gemini-flash"])
             .expect("parsing succeeds");
         match cli.command {
             Some(Commands::Attach { args }) => {
@@ -187,14 +187,14 @@ mod tests {
 
     #[test]
     fn test_cli_switch_subcommand() {
-        let cli_default = Cli::try_parse_from(["agymux", "switch"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["ax", "switch"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::Switch { scope }) => assert_eq!(scope, ScopeArg::Local),
             other => panic!("expected Switch local, got {:?}", other),
         }
 
         let cli_global =
-            Cli::try_parse_from(["agymux", "switch", "-s", "global"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "switch", "-s", "global"]).expect("parsing succeeds");
         match cli_global.command {
             Some(Commands::Switch { scope }) => assert_eq!(scope, ScopeArg::Global),
             other => panic!("expected Switch global, got {:?}", other),
@@ -203,26 +203,26 @@ mod tests {
 
     #[test]
     fn test_cli_project_and_helper_subcommands() {
-        let cli_proj = Cli::try_parse_from(["agymux", "project"]).expect("parsing succeeds");
+        let cli_proj = Cli::try_parse_from(["ax", "project"]).expect("parsing succeeds");
         assert!(matches!(cli_proj.command, Some(Commands::Project)));
 
-        let cli_help = Cli::try_parse_from(["agymux", "helper"]).expect("parsing succeeds");
+        let cli_help = Cli::try_parse_from(["ax", "helper"]).expect("parsing succeeds");
         assert!(matches!(cli_help.command, Some(Commands::Helper)));
 
-        let cli_ls = Cli::try_parse_from(["agymux", "ls"]).expect("parsing succeeds");
+        let cli_ls = Cli::try_parse_from(["ax", "ls"]).expect("parsing succeeds");
         assert!(matches!(cli_ls.command, Some(Commands::Ls)));
     }
 
     #[test]
     fn test_cli_palette_subcommand() {
-        let cli = Cli::try_parse_from(["agymux", "palette"]).expect("parsing succeeds");
+        let cli = Cli::try_parse_from(["ax", "palette"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::Palette { action }) => assert!(action.is_none()),
             other => panic!("expected Palette, got {:?}", other),
         }
 
         let cli_act =
-            Cli::try_parse_from(["agymux", "palette", "-a", "rename"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "palette", "-a", "rename"]).expect("parsing succeeds");
         match cli_act.command {
             Some(Commands::Palette { action }) => assert_eq!(action.as_deref(), Some("rename")),
             other => panic!("expected Palette rename, got {:?}", other),
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn test_cli_new_subcommand() {
         let cli = Cli::try_parse_from([
-            "agymux",
+            "ax",
             "new",
             "-n",
             "feature-tab",
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_cli_run_subcommand() {
         let cli = Cli::try_parse_from([
-            "agymux",
+            "ax",
             "run",
             "-H",
             "term",
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_cli_preview_subcommand() {
         let cli =
-            Cli::try_parse_from(["agymux", "preview", "conv-uuid-456"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "preview", "conv-uuid-456"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::Preview { conversation_id }) => {
                 assert_eq!(conversation_id, "conv-uuid-456");
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_cli_bind_subcommand() {
-        let cli_no_id = Cli::try_parse_from(["agymux", "bind"]).expect("parsing succeeds");
+        let cli_no_id = Cli::try_parse_from(["ax", "bind"]).expect("parsing succeeds");
         match cli_no_id.command {
             Some(Commands::Bind { conversation_id }) => {
                 assert!(conversation_id.is_none());
@@ -304,7 +304,7 @@ mod tests {
         }
 
         let cli_with_id =
-            Cli::try_parse_from(["agymux", "bind", "conv-uuid-123"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "bind", "conv-uuid-123"]).expect("parsing succeeds");
         match cli_with_id.command {
             Some(Commands::Bind { conversation_id }) => {
                 assert_eq!(conversation_id.as_deref(), Some("conv-uuid-123"));
@@ -316,31 +316,31 @@ mod tests {
     #[test]
     fn test_cli_remote_control_flag() {
         let cli_root =
-            Cli::try_parse_from(["agymux", "--remote-control"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "--remote-control"]).expect("parsing succeeds");
         assert!(cli_root.remote_control);
 
-        let cli_attach = Cli::try_parse_from(["agymux", "attach", "--remote-control"])
+        let cli_attach = Cli::try_parse_from(["ax", "attach", "--remote-control"])
             .expect("parsing succeeds");
         assert!(cli_attach.remote_control);
 
         let cli_run =
-            Cli::try_parse_from(["agymux", "run", "--remote-control"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "run", "--remote-control"]).expect("parsing succeeds");
         assert!(cli_run.remote_control);
     }
 
     #[test]
     fn test_cli_hook_and_install_subcommands() {
-        let cli_hook = Cli::try_parse_from(["agymux", "hook"]).expect("parsing succeeds");
+        let cli_hook = Cli::try_parse_from(["ax", "hook"]).expect("parsing succeeds");
         assert!(matches!(cli_hook.command, Some(Commands::Hook)));
 
-        let cli_install = Cli::try_parse_from(["agymux", "install"]).expect("parsing succeeds");
+        let cli_install = Cli::try_parse_from(["ax", "install"]).expect("parsing succeeds");
         assert!(matches!(cli_install.command, Some(Commands::Install)));
     }
 
     #[test]
     fn test_cli_close_window_subcommand() {
         let cli =
-            Cli::try_parse_from(["agymux", "close-window", "close:@1"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "close-window", "close:@1"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::CloseWindow { target }) => {
                 assert_eq!(target.as_deref(), Some("close:@1"));
@@ -348,7 +348,7 @@ mod tests {
             other => panic!("expected CloseWindow, got {:?}", other),
         }
 
-        let cli_alias = Cli::try_parse_from(["agymux", "close-tab"]).expect("parsing succeeds");
+        let cli_alias = Cli::try_parse_from(["ax", "close-tab"]).expect("parsing succeeds");
         match cli_alias.command {
             Some(Commands::CloseWindow { target }) => {
                 assert_eq!(target, None);

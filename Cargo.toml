@@ -4,11 +4,11 @@ version = "0.6.2"
 default-run = "ax"
 edition = "2021"
 authors = ["Aleksandr Korolev"]
-description = "OpenCode-style tabbed cockpit for Google Antigravity"
+description = "Terminal cockpit & multi-harness multiplexor for AI coding agents"
 license = "MIT"
-repository = "https://github.com/rockad/agymux"
+repository = "https://github.com/rockad/ax"
 readme = "README.md"
-keywords = ["antigravity", "tmux", "terminal", "ai-assistant", "cockpit"]
+keywords = ["antigravity", "tmux", "terminal", "ai-assistant", "cockpit", "multi-harness", "multiplexer", "codex", "opencode", "claude-code"]
 categories = ["command-line-utilities", "development-tools"]
 
 [lib]
@@ -19,9 +19,6 @@ path = "src/lib.rs"
 name = "ax"
 path = "src/bin/ax.rs"
 
-[[bin]]
-name = "agymux"
-path = "src/bin/agymux.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

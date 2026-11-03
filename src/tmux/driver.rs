@@ -390,6 +390,9 @@ impl<R: TmuxCommandRunner> TmuxClient<R> {
         };
         let _ = self
             .runner
+            .run(&["set-option", "-t", name, "@ax_project", &clean_project]);
+        let _ = self
+            .runner
             .run(&["set-option", "-t", name, "@agymux_project", &clean_project]);
 
         // Remove any leftover `status off` in tmux server and guarantee top tab bar is ALWAYS visible in new sessions

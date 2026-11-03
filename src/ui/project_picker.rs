@@ -261,7 +261,7 @@ fn discover_projects(base_dir: &Path) -> Vec<ProjectItem> {
             "list-panes",
             "-a",
             "-F",
-            "#{session_name}\t#{session_windows}\t#{session_attached}\t#{pane_current_path}\t#{@agymux_project}",
+            "#{session_name}\t#{session_windows}\t#{session_attached}\t#{pane_current_path}\t#{?#{@ax_project},#{@ax_project},#{@agymux_project}}",
         ])
         .output()
     {
@@ -388,6 +388,15 @@ pub fn execute_project_switch(project: &ProjectItem) -> anyhow::Result<()> {
                     "set-option",
                     "-t",
                     &target_session,
+                    "@ax_project",
+                    &project.name,
+                ])
+                .status();
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-t",
+                    &target_session,
                     "@agymux_project",
                     &project.name,
                 ])
@@ -412,10 +421,19 @@ pub fn execute_project_switch(project: &ProjectItem) -> anyhow::Result<()> {
                     &target_dir,
                     "-n",
                     "main",
-                    &format!("agymux run --project '{}' -c", project.name),
+                    &format!("ax run --project '{}' -c", project.name),
                 ])
                 .status();
 
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-t",
+                    &target_session,
+                    "@ax_project",
+                    &project.name,
+                ])
+                .status();
             let _ = Command::new("tmux")
                 .args([
                     "set-option",
@@ -438,6 +456,15 @@ pub fn execute_project_switch(project: &ProjectItem) -> anyhow::Result<()> {
             .unwrap_or(false);
 
         if has_session {
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-t",
+                    &target_session,
+                    "@ax_project",
+                    &project.name,
+                ])
+                .status();
             let _ = Command::new("tmux")
                 .args([
                     "set-option",
@@ -466,10 +493,19 @@ pub fn execute_project_switch(project: &ProjectItem) -> anyhow::Result<()> {
                     &target_dir,
                     "-n",
                     "main",
-                    &format!("agymux run --project '{}' -c", project.name),
+                    &format!("ax run --project '{}' -c", project.name),
                 ])
                 .status();
 
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-t",
+                    &target_session,
+                    "@ax_project",
+                    &project.name,
+                ])
+                .status();
             let _ = Command::new("tmux")
                 .args([
                     "set-option",

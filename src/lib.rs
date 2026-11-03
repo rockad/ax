@@ -44,7 +44,7 @@ pub fn run() -> Result<()> {
             && is_remote_control_active()
         {
             effective_remote_control = false;
-            eprintln!("agymux: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
         let mut cmd = Command::new("agy");
         cmd.args(["--project", &project]);
@@ -149,15 +149,15 @@ pub fn run() -> Result<()> {
                     let _ = Command::new("tmux")
                         .args([
                             "display-message",
-                            "agymux: Active remote-control instance already running on this machine (skipping --remote-control)",
+                            "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
                         ])
                         .status();
                 } else {
-                    eprintln!("agymux: Active remote-control instance already running on this machine (skipping --remote-control)");
+                    eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
                 }
             }
             let mut run_args = format!(
-                "agymux run -H {} --project '{}'",
+                "ax run -H {} --project '{}'",
                 agent_harness.as_str(),
                 project
             );
@@ -259,11 +259,11 @@ fn handle_attach(
             let _ = Command::new("tmux")
                 .args([
                     "display-message",
-                    "agymux: Active remote-control instance already running on this machine (skipping --remote-control)",
+                    "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
                 ])
                 .status();
         } else {
-            eprintln!("agymux: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
     }
 
@@ -295,7 +295,7 @@ fn handle_attach(
                 return tmux::TmuxDriver::attach_session(target_session);
             } else {
                 eprintln!(
-                    "agymux: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                     target_session, target_session
                 );
                 return Ok(());
@@ -303,7 +303,7 @@ fn handle_attach(
         }
 
         // Session does not exist yet: create session_name
-        let mut run_cmd = format!("agymux run --project '{}'", project);
+        let mut run_cmd = format!("ax run --project '{}'", project);
         if effective_remote_control {
             run_cmd.push_str(" --remote-control");
         }
@@ -330,7 +330,7 @@ fn handle_attach(
             return tmux::TmuxDriver::attach_session(session_name);
         } else {
             eprintln!(
-                "agymux: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                 session_name, session_name
             );
             return Ok(());
@@ -346,6 +346,15 @@ fn handle_attach(
         } else {
             "main".to_string()
         };
+        let _ = Command::new("tmux")
+            .args([
+                "set-option",
+                "-t",
+                target_session,
+                "@ax_project",
+                &clean_project,
+            ])
+            .status();
         let _ = Command::new("tmux")
             .args([
                 "set-option",
@@ -403,7 +412,7 @@ fn handle_attach(
             return tmux::TmuxDriver::attach_session(target_session);
         } else {
             eprintln!(
-                "agymux: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                 target_session, target_session
             );
             return Ok(());
@@ -471,7 +480,7 @@ fn handle_attach(
 
     match startup_action {
         crate::config::StartupAction::New => {
-            let mut run_cmd = format!("agymux run --project '{}'", project);
+            let mut run_cmd = format!("ax run --project '{}'", project);
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
@@ -502,11 +511,11 @@ fn handle_attach(
 
             let mut run_cmd = if let Some(ref lid) = latest_id {
                 format!(
-                    "agymux run --project '{}' --conversation '{}'",
+                    "ax run --project '{}' --conversation '{}'",
                     project, lid
                 )
             } else {
-                format!("agymux run --project '{}'", project)
+                format!("ax run --project '{}'", project)
             };
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
@@ -1064,11 +1073,11 @@ fn run_runner(
             let _ = Command::new("tmux")
                 .args([
                     "display-message",
-                    "agymux: Active remote-control instance already running on this machine (skipping --remote-control)",
+                    "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
                 ])
                 .status();
         } else {
-            eprintln!("agymux: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
     }
 
@@ -1104,7 +1113,7 @@ fn run_runner(
         if let Some(ref cid) = conv_id {
             let _ = tmux::TmuxDriver::set_window_option(win_target, "@conversation_id", cid);
             if let Some(ref win) = target_window {
-                let _ = crate::core::TabRegistry::bind_with_harness_static(win, cid, agent_harness);
+                let _ = crate::core::TabRegistry::bind_with_harness_static(win, cid, agent_harness.clone());
             }
 
             let db = db_path();
@@ -1125,7 +1134,7 @@ fn run_runner(
             let clean_prompt = sanitize_title(prompt);
             let _ = tmux::TmuxDriver::rename_window(win_target, &clean_prompt);
             if let Some(ref win) = target_window {
-                let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness);
+                let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness.clone());
             }
         } else {
             let initial_name = match agent_harness {
@@ -1134,7 +1143,7 @@ fn run_runner(
             };
             let _ = tmux::TmuxDriver::rename_window(win_target, initial_name);
             if let Some(ref win) = target_window {
-                let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness);
+                let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness.clone());
             }
         }
     }
@@ -1142,32 +1151,26 @@ fn run_runner(
     // 2. Background detached watcher retired: turn-driven tab titles are updated via agymux hook on Stop
 
     // 3. Assemble and execute harness command
-    let mut cmd = match agent_harness {
-        crate::core::AgentHarness::Antigravity => {
-            let mut c = Command::new("agy");
-            let forward_args = build_agy_args(
-                project,
-                &args,
-                conv_id.as_deref(),
-                has_continue_flag,
-                effective_remote_control,
-            );
-            c.args(&forward_args);
-            c
+    let registry = crate::core::harness::HarnessRegistry::new_with_config(&config);
+    let ctx = crate::core::harness::HarnessLaunchContext {
+        project: project.to_string(),
+        conversation_id: conv_id,
+        remote_control: effective_remote_control,
+        continue_flag: has_continue_flag,
+        args,
+        workdir: None,
+        env: std::collections::HashMap::new(),
+    };
+
+    let mut cmd = if let Some(driver) = registry.get_for_harness(&agent_harness) {
+        driver.build_command(&ctx)
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
+        let mut c = Command::new(shell);
+        if !ctx.args.is_empty() {
+            c.args(&ctx.args);
         }
-        crate::core::AgentHarness::ClaudeCode => {
-            let mut c = Command::new("claude");
-            c.args(&args);
-            c
-        }
-        crate::core::AgentHarness::PlainTerminal => {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-            let mut c = Command::new(shell);
-            if !args.is_empty() {
-                c.args(&args);
-            }
-            c
-        }
+        c
     };
 
     #[cfg(unix)]
@@ -1263,7 +1266,7 @@ fn format_number_cli(num: u64) -> String {
     }
 }
 
-/// List active agymux sessions
+/// List active ax sessions
 fn run_ls() -> Result<()> {
     let output = Command::new("tmux")
         .args([
@@ -1284,9 +1287,9 @@ fn run_ls() -> Result<()> {
     }
 
     if active.is_empty() {
-        println!("No active agymux sessions found.");
+        println!("No active ax sessions found.");
     } else {
-        println!("Active agymux sessions:");
+        println!("Active ax sessions:");
         for s in active {
             println!("  {}", s);
         }
@@ -1528,7 +1531,7 @@ pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
     }
 }
 
-/// Install or update agymux tab sync lifecycle hook in ~/.gemini/config/hooks.json
+/// Install or update ax tab sync lifecycle hook in ~/.gemini/config/hooks.json
 pub fn ensure_hook_installed() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Cannot determine home directory")?;
     let config_dir = home.join(".gemini/config");
@@ -1552,14 +1555,15 @@ pub fn ensure_hook_installed() -> Result<PathBuf> {
         "Stop": [
             {
                 "type": "command",
-                "command": "agymux hook",
+                "command": "ax hook",
                 "timeout": 5
             }
         ]
     });
 
     if let Some(obj) = root.as_object_mut() {
-        obj.insert("agymux-tab-sync".to_string(), hook_entry);
+        obj.remove("agymux-tab-sync");
+        obj.insert("ax-tab-sync".to_string(), hook_entry);
     }
 
     let formatted = serde_json::to_string_pretty(&root)?;
@@ -1568,10 +1572,10 @@ pub fn ensure_hook_installed() -> Result<PathBuf> {
     Ok(hook_path)
 }
 
-/// CLI command to install agymux lifecycle hook to ~/.gemini/config/hooks.json
+/// CLI command to install ax lifecycle hook to ~/.gemini/config/hooks.json
 pub fn run_install() -> Result<()> {
     let hook_path = ensure_hook_installed()?;
-    println!("Installed agymux hook to {}", hook_path.display());
+    println!("Installed ax hook to {}", hook_path.display());
     Ok(())
 }
 
@@ -1665,13 +1669,14 @@ mod tests {
             "Stop": [
                 {
                     "type": "command",
-                    "command": "agymux hook",
+                    "command": "ax hook",
                     "timeout": 5
                 }
             ]
         });
         if let Some(obj) = root.as_object_mut() {
-            obj.insert("agymux-tab-sync".to_string(), hook_entry);
+            obj.remove("agymux-tab-sync");
+            obj.insert("ax-tab-sync".to_string(), hook_entry);
         }
         let formatted = serde_json::to_string_pretty(&root).unwrap();
         std::fs::write(&hook_path, formatted).unwrap();
@@ -1679,11 +1684,11 @@ mod tests {
         let read_back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hook_path).unwrap()).unwrap();
         assert!(read_back.get("other-hook").is_some());
-        assert!(read_back.get("agymux-tab-sync").is_some());
-        assert_eq!(read_back["agymux-tab-sync"]["enabled"], true);
+        assert!(read_back.get("ax-tab-sync").is_some());
+        assert_eq!(read_back["ax-tab-sync"]["enabled"], true);
         assert_eq!(
-            read_back["agymux-tab-sync"]["Stop"][0]["command"],
-            "agymux hook"
+            read_back["ax-tab-sync"]["Stop"][0]["command"],
+            "ax hook"
         );
     }
 }

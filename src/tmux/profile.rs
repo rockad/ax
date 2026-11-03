@@ -7,7 +7,7 @@ pub struct TmuxProfile;
 
 impl TmuxProfile {
     pub fn generate(config: &Config, session_name: &str) -> Result<PathBuf> {
-        let conf_path = std::env::temp_dir().join(format!("agymux-{}.conf", session_name));
+        let conf_path = std::env::temp_dir().join(format!("ax-{}.conf", session_name));
         let content = Self::render_content(config);
         fs::write(&conf_path, content)?;
         Ok(conf_path)
@@ -18,7 +18,7 @@ impl TmuxProfile {
         let cyrillic = config.keybindings.bilingual_cyrillic;
 
         let mut lines = vec![
-            "# agymux dynamic tmux configuration".to_string(),
+            "# ax dynamic tmux configuration".to_string(),
             "set -g default-terminal \"tmux-256color\"".to_string(),
             "set -ga terminal-overrides \",*256col*:Tc\"".to_string(),
             "set -ga terminal-features \",xterm-ghostty:RGB:sync:cstyle:ccolour\"".to_string(),
@@ -111,7 +111,24 @@ impl TmuxProfile {
 
         let tab_width = config.theme.tabs.standard_width;
         let title_token = format!("#{{={}:window_name}}", tab_width);
-        let harness_icon = "#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},term},,󰚩}}";
+
+        let mut icon_cases = vec![
+            ("claude", "󰊠"),
+            ("opencode", "󰘐"),
+            ("codex", "󱚣"),
+            ("term", ""),
+        ];
+        for (name, h) in &config.harnesses {
+            if let Some(ref ic) = h.icon {
+                if !icon_cases.iter().any(|(k, _)| k == name) {
+                    icon_cases.push((name.as_str(), ic.as_str()));
+                }
+            }
+        }
+        let mut harness_icon = "󰚩".to_string();
+        for (name, ic) in icon_cases.into_iter().rev() {
+            harness_icon = format!("#{{?#{{==:#{{E:@harness}},{name}}},{ic},{harness_icon}}}");
+        }
 
         let default_window_format = format!(
             "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {harness_icon} {title_token}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {harness_icon} {title_token}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I {harness_icon} {title_token}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}{close_suffix_dim}#[default]}}}}"
@@ -145,7 +162,7 @@ impl TmuxProfile {
             .theme
             .status_right
             .as_deref()
-            .unwrap_or("#{?#{@agy_running},#[fg=yellow,bold]● RUNNING  ,}#[fg=magenta]#{?#{@agymux_project},#{@agymux_project},#S} #[fg=white]· #[fg=white]%H:%M #[fg=white]· #[fg=white]%Y-%m-%d #[default]");
+            .unwrap_or("#{?#{@agy_running},#[fg=yellow,bold]● RUNNING  ,}#[fg=magenta]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}} #[fg=white]· #[fg=white]%H:%M #[fg=white]· #[fg=white]%Y-%m-%d #[default]");
         lines.push(format!("set -g status-right \"{}\"", status_right));
 
         // Prefix key
@@ -155,25 +172,38 @@ impl TmuxProfile {
 
         // Keybindings & popups
         // Switcher (2-pane switcher with live preview)
-        lines.push("bind s display-popup -E -w 85% -h 75% \"agymux switch\"".to_string());
-        lines.push("bind S display-popup -E -w 85% -h 75% \"agymux switch\"".to_string());
+        lines.push("bind s display-popup -E -w 85% -h 75% \"ax switch\"".to_string());
+        lines.push("bind S display-popup -E -w 85% -h 75% \"ax switch\"".to_string());
 
-        // Project switcher
-        lines.push("bind o display-popup -E -w 85% -h 70% \"agymux project\"".to_string());
-        lines.push("bind O display-popup -E -w 85% -h 70% \"agymux project\"".to_string());
+        // Actions / Command palette & Project switcher
+        lines.push("bind p display-popup -E -w 75% -h 60% \"ax palette\"".to_string());
+        lines.push("bind P display-popup -E -w 85% -h 70% \"ax project\"".to_string());
 
-        // Actions / Command palette
-        lines.push("bind p display-popup -E -w 75% -h 60% \"agymux palette\"".to_string());
-        lines.push("bind P display-popup -E -w 75% -h 60% \"agymux palette\"".to_string());
+        // Harness tab creation bindings
+        lines.push("bind n new-window -n \"+ new\" \"ax run -H agy\"".to_string());
+        lines.push("bind N new-window -n \"+ new\" \"ax run -H agy\"".to_string());
+        lines.push("bind c new-window -n \"+ new\" \"ax run -H claude\"".to_string());
+        lines.push("bind C new-window -n \"+ new\" \"ax run -H claude\"".to_string());
+        lines.push("bind o new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
+        lines.push("bind O new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
+        lines.push("bind x new-window -n \"+ new\" \"ax run -H codex\"".to_string());
+        lines.push("bind X new-window -n \"+ new\" \"ax run -H codex\"".to_string());
+        lines.push("bind t new-window -n \"term\" \"ax run -H term\"".to_string());
+        lines.push("bind T new-window -n \"term\" \"ax run -H term\"".to_string());
 
-        // Tab management
-        lines.push("bind c new-window -n \"+ new\" \"agymux run -H claude\"".to_string());
-        lines.push("bind C new-window -n \"+ new\" \"agymux run -H claude\"".to_string());
-        lines.push("bind n new-window -n \"+ new\" \"agymux run -H agy\"".to_string());
-        lines.push("bind N new-window -n \"+ new\" \"agymux run -H agy\"".to_string());
+        // Custom harness bindings if registered with hotkeys
+        for (name, h_cfg) in &config.harnesses {
+            if let Some(hk) = h_cfg.hotkey {
+                let upper = hk.to_uppercase().collect::<String>();
+                lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", hk, name));
+                lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", upper, name));
+            }
+        }
 
-        lines.push("bind x confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
-        lines.push("bind X confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+        // Tab and session controls
+        lines.push("bind q confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+        lines.push("bind Q confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+        lines.push("bind & confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
 
         lines.push("bind r command-prompt -I \"#W\" \"rename-window '%%'\"".to_string());
         lines.push("bind R run-shell \"ax reload\"".to_string());
@@ -185,12 +215,9 @@ impl TmuxProfile {
         lines.push("bind K confirm-before -p \"Kill session #S? (y/n)\" kill-session".to_string());
 
         // Shortcut helper / cheatsheet
-        lines.push("bind h display-popup -E -w 75% -h 70% \"agymux helper\"".to_string());
-        lines.push("bind H display-popup -E -w 75% -h 70% \"agymux helper\"".to_string());
-        lines.push("bind ? display-popup -E -w 75% -h 70% \"agymux helper\"".to_string());
-
-        lines.push("bind t new-window -n \"term\" \"$SHELL\"".to_string());
-        lines.push("bind T new-window -n \"term\" \"$SHELL\"".to_string());
+        lines.push("bind h display-popup -E -w 75% -h 70% \"ax helper\"".to_string());
+        lines.push("bind H display-popup -E -w 75% -h 70% \"ax helper\"".to_string());
+        lines.push("bind ? display-popup -E -w 75% -h 70% \"ax helper\"".to_string());
 
         lines.push(
             "bind m run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\"".to_string(),
@@ -212,22 +239,34 @@ impl TmuxProfile {
         // Bilingual Cyrillic bindings
         if cyrillic {
             lines.push("# Bilingual RussianWin pairings".to_string());
-            lines.push("bind ы display-popup -E -w 85% -h 75% \"agymux switch\"".to_string());
-            lines.push("bind Ы display-popup -E -w 85% -h 75% \"agymux switch\"".to_string());
+            lines.push("bind ы display-popup -E -w 85% -h 75% \"ax switch\"".to_string());
+            lines.push("bind Ы display-popup -E -w 85% -h 75% \"ax switch\"".to_string());
 
-            lines.push("bind щ display-popup -E -w 85% -h 70% \"agymux project\"".to_string());
-            lines.push("bind Щ display-popup -E -w 85% -h 70% \"agymux project\"".to_string());
+            lines.push("bind з display-popup -E -w 75% -h 60% \"ax palette\"".to_string());
+            lines.push("bind З display-popup -E -w 85% -h 70% \"ax project\"".to_string());
 
-            lines.push("bind з display-popup -E -w 75% -h 60% \"agymux palette\"".to_string());
-            lines.push("bind З display-popup -E -w 75% -h 60% \"agymux palette\"".to_string());
+            lines.push("bind т new-window -n \"+ new\" \"ax run -H agy\"".to_string());
+            lines.push("bind Т new-window -n \"+ new\" \"ax run -H agy\"".to_string());
+            lines.push("bind с new-window -n \"+ new\" \"ax run -H claude\"".to_string());
+            lines.push("bind С new-window -n \"+ new\" \"ax run -H claude\"".to_string());
+            lines.push("bind щ new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
+            lines.push("bind Щ new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
+            lines.push("bind ч new-window -n \"+ new\" \"ax run -H codex\"".to_string());
+            lines.push("bind Ч new-window -n \"+ new\" \"ax run -H codex\"".to_string());
+            lines.push("bind е new-window -n \"term\" \"ax run -H term\"".to_string());
+            lines.push("bind Е new-window -n \"term\" \"ax run -H term\"".to_string());
 
-            lines.push("bind с new-window -n \"+ new\" \"agymux run -H claude\"".to_string());
-            lines.push("bind С new-window -n \"+ new\" \"agymux run -H claude\"".to_string());
-            lines.push("bind т new-window -n \"+ new\" \"agymux run -H agy\"".to_string());
-            lines.push("bind Т new-window -n \"+ new\" \"agymux run -H agy\"".to_string());
+            // Custom harness cyrillic bindings
+            for (name, h_cfg) in &config.harnesses {
+                if let Some(chk) = h_cfg.cyrillic_hotkey {
+                    let upper = chk.to_uppercase().collect::<String>();
+                    lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", chk, name));
+                    lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", upper, name));
+                }
+            }
 
-            lines.push("bind ч confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
-            lines.push("bind Ч confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+            lines.push("bind й confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+            lines.push("bind Й confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
 
             lines.push("bind к command-prompt -I \"#W\" \"rename-window '%%'\"".to_string());
             lines.push("bind К run-shell \"ax reload\"".to_string());
@@ -242,11 +281,8 @@ impl TmuxProfile {
                 "bind Л confirm-before -p \"Kill session #S? (y/n)\" kill-session".to_string(),
             );
 
-            lines.push("bind р display-popup -E -w 75% -h 70% \"agymux helper\"".to_string());
-            lines.push("bind Р display-popup -E -w 75% -h 70% \"agymux helper\"".to_string());
-
-            lines.push("bind е new-window -n \"term\" \"$SHELL\"".to_string());
-            lines.push("bind Е new-window -n \"term\" \"$SHELL\"".to_string());
+            lines.push("bind р display-popup -E -w 75% -h 70% \"ax helper\"".to_string());
+            lines.push("bind Р display-popup -E -w 75% -h 70% \"ax helper\"".to_string());
 
             lines.push(
                 "bind ь run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\"".to_string(),
@@ -289,9 +325,9 @@ impl TmuxProfile {
         lines.push("bind Ю swap-window -d -t +1".to_string());
 
         // Mouse interactions for tabs
-        lines.push("bind-key -T root MouseDown1Status if-shell -F '#{m/r:^close,#{mouse_status_range}}' { run-shell 'agymux close-window \"#{mouse_status_range}\"' } { switch-client -t = }".to_string());
+        lines.push("bind-key -T root MouseDown1Status if-shell -F '#{m/r:^close,#{mouse_status_range}}' { run-shell 'ax close-window \"#{mouse_status_range}\"' } { switch-client -t = }".to_string());
         lines.push("bind-key -T root MouseDown2Status if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \"Close final tab #W? (y/n)\" \"kill-window -t =\" }".to_string());
-        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'rename-window -t = %%'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'agymux palette fork'\" \"Reload Session\" R \"run-shell 'agymux palette -a reload'\"".to_string());
+        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'rename-window -t = %%'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'ax palette fork'\" \"Reload Session\" R \"run-shell 'ax palette -a reload'\"".to_string());
 
         lines.join("\n") + "\n"
     }
@@ -347,7 +383,7 @@ mod tests {
         assert!(!content.contains(''));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
         assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @external_sync 0\""));
-        let harness_icon = "#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},term},,󰚩}}";
+        let harness_icon = "#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},opencode},󰘐,#{?#{==:#{E:@harness},codex},󱚣,#{?#{==:#{E:@harness},term},,󰚩}}}}";
         let expected_win_fmt = format!(
             "setw -g window-status-format \"#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}#[range=user|close:#{{window_id}}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}}}\"",
             harness_icon, harness_icon, harness_icon
@@ -377,10 +413,10 @@ mod tests {
         assert!(content.contains("bind-key -T root MouseDown1Status"));
         assert!(content.contains("bind-key -T root MouseDown2Status"));
         assert!(content.contains("bind-key -T root MouseDown3Status"));
-        assert!(content.contains("bind c new-window -n \"+ new\" \"agymux run -H claude\""));
-        assert!(content.contains("bind C new-window -n \"+ new\" \"agymux run -H claude\""));
-        assert!(content.contains("bind n new-window -n \"+ new\" \"agymux run -H agy\""));
-        assert!(content.contains("bind N new-window -n \"+ new\" \"agymux run -H agy\""));
+        assert!(content.contains("bind c new-window -n \"+ new\" \"ax run -H claude\""));
+        assert!(content.contains("bind C new-window -n \"+ new\" \"ax run -H claude\""));
+        assert!(content.contains("bind n new-window -n \"+ new\" \"ax run -H agy\""));
+        assert!(content.contains("bind N new-window -n \"+ new\" \"ax run -H agy\""));
         assert!(content.contains("bind d detach-client"));
         assert!(content.contains("bind D detach-client"));
         assert!(
@@ -389,12 +425,10 @@ mod tests {
         assert!(
             content.contains("bind K confirm-before -p \"Kill session #S? (y/n)\" kill-session")
         );
-        assert!(content.contains("bind s display-popup -E -w 85% -h 75% \"agymux switch\""));
-        assert!(content.contains("bind S display-popup -E -w 85% -h 75% \"agymux switch\""));
-        assert!(content.contains("bind o display-popup -E -w 85% -h 70% \"agymux project\""));
-        assert!(content.contains("bind O display-popup -E -w 85% -h 70% \"agymux project\""));
-        assert!(content.contains("bind p display-popup -E -w 75% -h 60% \"agymux palette\""));
-        assert!(content.contains("bind P display-popup -E -w 75% -h 60% \"agymux palette\""));
+        assert!(content.contains("bind s display-popup -E -w 85% -h 75% \"ax switch\""));
+        assert!(content.contains("bind S display-popup -E -w 85% -h 75% \"ax switch\""));
+        assert!(content.contains("bind p display-popup -E -w 75% -h 60% \"ax palette\""));
+        assert!(content.contains("bind P display-popup -E -w 85% -h 70% \"ax project\""));
         assert!(!content.contains("C-S-p"));
         assert!(!content.contains("C-S-P"));
         assert!(content.contains("bind-key -n M-1 select-window -t :1"));
@@ -405,15 +439,19 @@ mod tests {
         assert!(content.contains("bind 9 select-window -t :9"));
         assert!(content.contains("bind Left previous-window"));
         assert!(content.contains("bind Right next-window"));
-        assert!(content.contains("bind x confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind X confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
+        assert!(content.contains("bind o new-window -n \"+ new\" \"ax run -H opencode\""));
+        assert!(content.contains("bind O new-window -n \"+ new\" \"ax run -H opencode\""));
+        assert!(content.contains("bind x new-window -n \"+ new\" \"ax run -H codex\""));
+        assert!(content.contains("bind X new-window -n \"+ new\" \"ax run -H codex\""));
+        assert!(content.contains("bind q confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
+        assert!(content.contains("bind Q confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
         assert!(content.contains("bind r command-prompt -I \"#W\" \"rename-window '%%'\""));
         assert!(content.contains("bind R run-shell \"ax reload\""));
-        assert!(content.contains("bind h display-popup -E -w 75% -h 70% \"agymux helper\""));
-        assert!(content.contains("bind H display-popup -E -w 75% -h 70% \"agymux helper\""));
-        assert!(content.contains("bind ? display-popup -E -w 75% -h 70% \"agymux helper\""));
-        assert!(content.contains("bind t new-window -n \"term\" \"$SHELL\""));
-        assert!(content.contains("bind T new-window -n \"term\" \"$SHELL\""));
+        assert!(content.contains("bind h display-popup -E -w 75% -h 70% \"ax helper\""));
+        assert!(content.contains("bind H display-popup -E -w 75% -h 70% \"ax helper\""));
+        assert!(content.contains("bind ? display-popup -E -w 75% -h 70% \"ax helper\""));
+        assert!(content.contains("bind t new-window -n \"term\" \"ax run -H term\""));
+        assert!(content.contains("bind T new-window -n \"term\" \"ax run -H term\""));
         assert!(content.contains("bind m run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\""));
         assert!(content.contains("bind M run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\""));
         assert!(content.contains("bind % split-window -h -c \"#{pane_current_path}\""));
@@ -425,16 +463,20 @@ mod tests {
         assert!(content.contains("bind ! break-pane"));
         assert!(content.contains("bind [ copy-mode"));
         // Check cyrillic bindings by default
-        assert!(content.contains("bind с new-window -n \"+ new\" \"agymux run -H claude\""));
-        assert!(content.contains("bind С new-window -n \"+ new\" \"agymux run -H claude\""));
-        assert!(content.contains("bind т new-window -n \"+ new\" \"agymux run -H agy\""));
-        assert!(content.contains("bind Т new-window -n \"+ new\" \"agymux run -H agy\""));
-        assert!(content.contains("bind ы display-popup -E -w 85% -h 75% \"agymux switch\""));
-        assert!(content.contains("bind Ы display-popup -E -w 85% -h 75% \"agymux switch\""));
-        assert!(content.contains("bind щ display-popup -E -w 85% -h 70% \"agymux project\""));
-        assert!(content.contains("bind Щ display-popup -E -w 85% -h 70% \"agymux project\""));
-        assert!(content.contains("bind з display-popup -E -w 75% -h 60% \"agymux palette\""));
-        assert!(content.contains("bind З display-popup -E -w 75% -h 60% \"agymux palette\""));
+        assert!(content.contains("bind с new-window -n \"+ new\" \"ax run -H claude\""));
+        assert!(content.contains("bind С new-window -n \"+ new\" \"ax run -H claude\""));
+        assert!(content.contains("bind т new-window -n \"+ new\" \"ax run -H agy\""));
+        assert!(content.contains("bind Т new-window -n \"+ new\" \"ax run -H agy\""));
+        assert!(content.contains("bind щ new-window -n \"+ new\" \"ax run -H opencode\""));
+        assert!(content.contains("bind Щ new-window -n \"+ new\" \"ax run -H opencode\""));
+        assert!(content.contains("bind ч new-window -n \"+ new\" \"ax run -H codex\""));
+        assert!(content.contains("bind Ч new-window -n \"+ new\" \"ax run -H codex\""));
+        assert!(content.contains("bind е new-window -n \"term\" \"ax run -H term\""));
+        assert!(content.contains("bind Е new-window -n \"term\" \"ax run -H term\""));
+        assert!(content.contains("bind ы display-popup -E -w 85% -h 75% \"ax switch\""));
+        assert!(content.contains("bind Ы display-popup -E -w 85% -h 75% \"ax switch\""));
+        assert!(content.contains("bind з display-popup -E -w 75% -h 60% \"ax palette\""));
+        assert!(content.contains("bind З display-popup -E -w 85% -h 70% \"ax project\""));
         assert!(content.contains("bind в detach-client"));
         assert!(content.contains("bind В detach-client"));
         assert!(
@@ -443,14 +485,12 @@ mod tests {
         assert!(
             content.contains("bind Л confirm-before -p \"Kill session #S? (y/n)\" kill-session")
         );
-        assert!(content.contains("bind ч confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind Ч confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
+        assert!(content.contains("bind й confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
+        assert!(content.contains("bind Й confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
         assert!(content.contains("bind к command-prompt -I \"#W\" \"rename-window '%%'\""));
         assert!(content.contains("bind К run-shell \"ax reload\""));
-        assert!(content.contains("bind р display-popup -E -w 75% -h 70% \"agymux helper\""));
-        assert!(content.contains("bind Р display-popup -E -w 75% -h 70% \"agymux helper\""));
-        assert!(content.contains("bind е new-window -n \"term\" \"$SHELL\""));
-        assert!(content.contains("bind Е new-window -n \"term\" \"$SHELL\""));
+        assert!(content.contains("bind р display-popup -E -w 75% -h 70% \"ax helper\""));
+        assert!(content.contains("bind Р display-popup -E -w 75% -h 70% \"ax helper\""));
         assert!(content.contains("bind ь run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\""));
         assert!(content.contains("bind Ь run-shell \"tmux new-session -d -s main 2>/dev/null; tmux switch-client -t main\""));
         assert!(content.contains("bind я resize-pane -Z"));
@@ -481,7 +521,7 @@ mod tests {
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
         assert!(content.contains("󰚩"));
         assert!(
-            content.contains("#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},term},,󰚩}}")
+            content.contains("#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},opencode},󰘐,#{?#{==:#{E:@harness},codex},󱚣,#{?#{==:#{E:@harness},term},,󰚩}}}}")
         );
         assert!(content.contains("set -g status-left \"#{?#{client_prefix},#[fg=black]#[bg=brightred]#[bold] 󰘳 PREFIX #[default] ,}\""));
     }
@@ -551,7 +591,7 @@ mod tests {
         let path = TmuxProfile::generate(&config, "test-session-profile").unwrap();
         assert!(path.exists());
         let read = std::fs::read_to_string(&path).unwrap();
-        assert!(read.contains("agymux dynamic tmux configuration"));
+        assert!(read.contains("ax dynamic tmux configuration"));
         let _ = std::fs::remove_file(path);
     }
 }

@@ -1054,13 +1054,13 @@ pub fn execute_selection(
                         &workdir.display().to_string(),
                         "-n",
                         "+ new",
-                        &format!("agymux run --project '{}'", project),
+                        &format!("ax run --project '{}'", project),
                     ])
                     .status();
             } else {
                 let session_name = format!("agy-{}", project);
                 let config = crate::config::Config::load().unwrap_or_default();
-                let mut run_cmd = format!("agymux run --project '{}'", project);
+                let mut run_cmd = format!("ax run --project '{}'", project);
                 if config.general.remote_control {
                     run_cmd.push_str(" --remote-control");
                 }
@@ -1126,7 +1126,7 @@ pub fn execute_selection(
                         "-n",
                         "conv",
                         &format!(
-                            "agymux run --project '{}' --conversation '{}'",
+                            "ax run --project '{}' --conversation '{}'",
                             effective_project, conversation_id
                         ),
                     ])
@@ -1135,7 +1135,7 @@ pub fn execute_selection(
                 let session_name = format!("agy-{}", effective_project);
                 let config = crate::config::Config::load().unwrap_or_default();
                 let mut run_cmd = format!(
-                    "agymux run --project '{}' --conversation '{}'",
+                    "ax run --project '{}' --conversation '{}'",
                     effective_project, conversation_id
                 );
                 if config.general.remote_control {

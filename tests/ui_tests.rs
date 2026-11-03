@@ -272,7 +272,7 @@ fn test_palette_modal_render_and_fuzzy_filter() {
 fn test_picker_modal_render_and_scope_toggle() {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
-    let mut state = PickerState::new(ScopeArg::Local, "agymux".to_string(), PathBuf::from("/tmp"));
+    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
 
     terminal
         .draw(|f| picker::render(f, f.area(), &mut state))

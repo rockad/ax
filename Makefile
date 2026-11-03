@@ -21,8 +21,8 @@ help:
 	@echo "  checksums     - Regenerate SHA256SUMS for all archives in dist/"
 	@echo "  cross-check   - Run cross check for musl and aarch64 targets"
 	@echo "  cross-build   - Build musl and aarch64 release binaries using cross"
-	@echo "  install       - Install ax into ~/.local/bin and symlink agymux and agemux"
-	@echo "  uninstall     - Remove ax, agymux, and agemux from ~/.local/bin"
+	@echo "  install       - Install ax into ~/.local/bin"
+	@echo "  uninstall     - Remove ax from ~/.local/bin"
 	@echo "  changelog     - Generate CHANGELOG.md via git-cliff"
 	@echo "  release       - Bump version according to semver and tag release"
 	@echo "  clean         - Clean build target directory and dist/"
@@ -56,13 +56,11 @@ package: dist
 
 dist: build
 	@mkdir -p $(PKG_DIR)/config/tmux
-	@cp target/release/agymux $(PKG_DIR)/
 	@cp target/release/ax $(PKG_DIR)/
 	@cp README.md LICENSE $(PKG_DIR)/
-	@cp config/tmux/agymux.conf $(PKG_DIR)/config/tmux/
-	@cp -P config/tmux/agymux-tabs.conf $(PKG_DIR)/config/tmux/
+	@cp config/tmux/ax.conf $(PKG_DIR)/config/tmux/
 	@cp install.sh $(PKG_DIR)/
-	@chmod +x $(PKG_DIR)/agymux $(PKG_DIR)/ax $(PKG_DIR)/install.sh
+	@chmod +x $(PKG_DIR)/ax $(PKG_DIR)/install.sh
 	@tar -czf $(DIST_DIR)/$(PKG_NAME).tar.gz -C $(DIST_DIR) $(PKG_NAME)
 	@rm -rf $(PKG_DIR)
 	@cd $(DIST_DIR) && (sha256sum $(PKG_NAME).tar.gz 2>/dev/null || shasum -a 256 $(PKG_NAME).tar.gz) > $(PKG_NAME).tar.gz.sha256
@@ -94,13 +92,11 @@ install: build
 	@mkdir -p $(HOME)/.local/bin
 	@rm -f $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
 	@cp target/release/ax $(HOME)/.local/bin/ax
-	@ln -sf $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux
-	@ln -sf $(HOME)/.local/bin/ax $(HOME)/.local/bin/agemux
-	@echo "Installed ax and symlinked agymux and agemux in $(HOME)/.local/bin"
+	@echo "Installed ax in $(HOME)/.local/bin"
 
 uninstall:
 	@rm -f $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
-	@echo "Removed ax, agymux, and agemux from $(HOME)/.local/bin"
+	@echo "Removed ax from $(HOME)/.local/bin"
 
 changelog:
 	@which git-cliff >/dev/null 2>&1 && git-cliff --output CHANGELOG.md || bun x git-cliff --output CHANGELOG.md

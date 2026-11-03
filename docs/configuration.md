@@ -1,19 +1,21 @@
-# agymux Configuration Reference
+# ax Configuration Reference
 
-`agymux` (also invoked as `ax`) is configured through a single TOML configuration file. It manages window ergonomics, tab strip placement, Monokai Pro Octagon styling, mouse click handlers, and bilingual keyboard shortcuts.
+`ax` is configured through a single TOML configuration file. It manages window ergonomics, multi-harness execution, tab strip placement, visual styling, mouse click handlers, and bilingual keyboard shortcuts.
 
 ---
 
 ## Configuration File Locations
 
-`agymux` checks configuration files in the following resolution order:
+`ax` checks configuration files in the following resolution order:
 
-1. **Explicit flag / environment**: Config passed via CLI flags or `$AGYMUX_CONFIG`.
-2. **XDG Standard Path**: `~/.config/agymux/agymux.toml` (or `$XDG_CONFIG_HOME/agymux/agymux.toml`).
-3. **Internal Defaults**: If no file is present, `agymux` automatically falls back to built-in Monokai Pro Octagon defaults.
+- **Explicit flag / environment**: Config passed via CLI flags or `$AX_CONFIG`.
+- **Primary XDG Path**: `~/.config/ax/config.toml` (or `$XDG_CONFIG_HOME/ax/config.toml`).
+- **Modular Harness Configs**: Supplementary `*.toml` files in `~/.config/ax/harnesses/*.toml`.
+- **Legacy Fallback**: `~/.config/agymux/config.toml` (loaded automatically if primary config is absent).
+- **Internal Defaults**: If no file is present, `ax` automatically falls back to built-in defaults.
 
 Generated tmux profiles and snippets are synchronized to:
-- `~/.config/tmux/agymux.conf` (or custom profile target).
+- `~/.config/tmux/ax.conf` (or custom profile target).
 
 ---
 
@@ -22,7 +24,7 @@ Generated tmux profiles and snippets are synchronized to:
 ```toml
 [general]
 projects_dir = "~/projects"
-default_model = "Gemini 3.6 Flash (Medium)"
+default_model = "Gemini 3.8 Flash (Medium)"
 default_effort = "medium"
 startup_action = "ask"
 remote_control = false
@@ -50,6 +52,18 @@ bilingual_cyrillic = true
 
 [tmux]
 isolated_socket = false
+
+# Optional Custom Pluggable Harnesses
+[harnesses.aider]
+command = "aider"
+display_name = "Aider Chat"
+icon = "󰚩"
+hotkey = "a"
+cyrillic_hotkey = "ф"
+args = ["--no-auto-commits"]
+
+[harnesses.aider.env]
+ANTHROPIC_API_KEY = "your-api-key"
 ```
 
 ---
@@ -60,15 +74,15 @@ isolated_socket = false
 
 | Key | Type | Default | Choices / Format | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `projects_dir` | `string` | `"~/projects"` | Filesystem path | Root directory recursively scanned by Project Switcher (`Ctrl+Space o` / `O` / `щ` / `Щ`) for git repositories and workspaces. |
-| `default_model` | `string` | `"Gemini 3.6 Flash (Medium)"` | Any Antigravity model name | Default model preselected when creating new conversation tabs. |
-| `default_effort` | `string` | `"medium"` | `"none"`, `"low"`, `"medium"`, `"high"` | Default thinking / reasoning effort level passed to Antigravity sessions. |
+| `projects_dir` | `string` | `"~/projects"` | Filesystem path | Root directory recursively scanned by Project Switcher (`Ctrl+Space P` / `З`) for git repositories and workspaces. |
+| `default_model` | `string` | `"Gemini 3.8 Flash (Medium)"` | Any agent model name | Default model preselected when creating new conversation tabs. |
+| `default_effort` | `string` | `"medium"` | `"none"`, `"low"`, `"medium"`, `"high"` | Default thinking / reasoning effort level passed to sessions. |
 | `startup_action` | `string` | `"ask"` | `"new"`, `"resume_latest"`, `"picker"`, `"terminal"`, `"ask"` | Cockpit launch behavior when invoked without command arguments. |
 | `remote_control` | `boolean` | `false` | `true`, `false` | Enable cross-device remote control mode (`--remote-control`). Windows display the `󰢹` indicator. |
 | `single_remote_control_instance` | `boolean` | `true` | `true`, `false` | Restrict remote-control mode to a single active instance per machine to prevent conversation forking across competing remote sessions. |
 
 #### Startup Action Choices:
-- `"ask"` (default): Interactive interactive prompt offering New Tab, Resume Latest, or Switcher.
+- `"ask"` (default): Interactive prompt offering New Tab, Resume Latest, or Switcher.
 - `"new"`: Immediately spawn a new conversation tab.
 - `"resume_latest"`: Automatically attach to the most recently active conversation in the project.
 - `"picker"`: Instantly pop up the two-pane conversation switcher (`Ctrl+Space s`).
@@ -111,8 +125,8 @@ isolated_socket = false
 
 | Key | Type | Default | Choices | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `prefix` | `string` | `"C-Space"` | Valid tmux key | Primary prefix key for all agymux shortcuts. |
-| `bilingual_cyrillic` | `boolean` | `true` | `true`, `false` | Automatically bind paired RussianWin Cyrillic keys (e.g. `s` / `ы`, `p` / `з`, `b` / `и`) so layout switching never breaks shortcuts. |
+| `prefix` | `string` | `"C-Space"` | Valid tmux key | Primary prefix key for all ax shortcuts. |
+| `bilingual_cyrillic` | `boolean` | `true` | `true`, `false` | Automatically bind paired RussianWin Cyrillic keys (e.g. `n` / `т`, `c` / `с`, `o` / `щ`, `x` / `ч`, `t` / `е`, `s` / `ы`, `p` / `з`) so layout switching never breaks shortcuts. |
 
 ---
 
@@ -120,26 +134,47 @@ isolated_socket = false
 
 | Key | Type | Default | Choices | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `isolated_socket` | `boolean` | `false` | `true`, `false` | Run agymux sessions under a dedicated socket (`tmux -L agymux`) isolated from default user sessions. |
+| `isolated_socket` | `boolean` | `false` | `true`, `false` | Run ax sessions under a dedicated socket (`tmux -L ax`) isolated from default user sessions. |
+
+---
+
+### `[harnesses.<name>]` — Pluggable Custom Harnesses
+
+Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separate files in `~/.config/ax/harnesses/<name>.toml`:
+
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `command` | `string` (optional) | `<name>` | Executable command or path to run. |
+| `display_name` | `string` (optional) | `<name>` | Human-readable harness name displayed in menus and status bars. |
+| `icon` | `string` (optional) | `"󰚩"` | Nerd font glyph shown in the tab strip. |
+| `hotkey` | `char` (optional) | `None` | Direct single-character keybinding under prefix (e.g. `'a'` binds `Ctrl+Space a` / `A`). |
+| `cyrillic_hotkey` | `char` (optional) | `None` | Paired Cyrillic hotkey (e.g. `'ф'` binds `Ctrl+Space ф` / `Ф`). |
+| `args` | `array of strings` | `[]` | Static arguments passed to the command. |
+| `env` | `table` | `{}` | Environment variables injected when launching the harness. |
 
 ---
 
 ## Status Indicator Legend
 
-`agymux` renders real-time visual indicators directly inside each tab's title:
+`ax` renders real-time visual indicators directly inside each tab's title:
 
-| Glyph | Unicode | Color Context | Meaning |
-| :---: | :---: | :--- | :--- |
-| **`󰢹`** | `\u{F08B9}` | Sky Blue (`#78e7ff`) / Slate | **Remote Control Session**: Tab was launched with `--remote-control` active, enabling remote orchestration across devices. |
-| **`󰛌`** | `\u{F06CC}` | Cyan Highlight (`#78e7ff`) | **External Sync / Worktree Sync**: Changes were synced or received externally. Automatically clears when the tab receives focus (`pane-focus-in`). |
-| **`󰂞`** | `\u{F009E}` | Gold / Red Alert (`#ff657a`) | **Activity / Bell Alert**: Window activity flag or terminal bell triggered by a finished run or waiting background process. |
-| **`󰅖`** | `\u{F0156}` | Subtle Grey (`#525666`) / Dark Ink | **Interactive Close Button**: Mouse-clickable zone bound via `#[range=user\|close]`. |
+| Glyph | Unicode | Meaning |
+| :---: | :---: | :--- |
+| **`󰚩`** | `\u{F06A9}` | **Google Antigravity Harness**: Running `agy`. |
+| **`󰊠`** | `\u{F02A0}` | **Claude Code Harness**: Running `claude`. |
+| **`󰘐`** | `\u{F0610}` | **OpenCode Harness**: Running `opencode`. |
+| **`󱚣`** | `\u{F16A3}` | **Codex Harness**: Running `codex`. |
+| **``** | `\u{E795}` | **Plain Terminal**: Running `$SHELL`. |
+| **`󰢹`** | `\u{F08B9}` | **Remote Control Session**: Tab was launched with `--remote-control` active. |
+| **`󰛌`** | `\u{F06CC}` | **External Sync / Worktree Sync**: Changes were synced externally. Clears on pane focus (`pane-focus-in`). |
+| **`󰂞`** | `\u{F009E}` | **Activity / Bell Alert**: Window activity flag or terminal bell triggered by a finished run. |
+| **`󰅖`** | `\u{F0156}` | **Interactive Close Button**: Mouse-clickable zone bound via `#[range=user\|close]`. |
 
 ---
 
 ## Mouse Ergonomics & Protection
 
-`agymux` features full OpenCode-style mouse handling with safety protections:
+`ax` features full OpenCode-style mouse handling with safety protections:
 
 ### 1. Left Click (`MouseDown1Status`)
 - **Clicking the tab body:** Switches to the clicked tab instantly (`switch-client -t =`).
@@ -157,7 +192,7 @@ isolated_socket = false
 
 ### 3. Right Click (`MouseDown3Status`)
 - Opens an interactive context menu directly at the mouse position:
-  - `Close Tab` (`x`)
+  - `Close Tab` (`q`)
   - `Rename Tab` (`r`)
   - `Fork Tab` (`f`)
   - `Reload Session` (`R`)
@@ -169,11 +204,12 @@ isolated_socket = false
 ### 1. Top Spaced (`position = "top"`, `spacer_lines = 1`) — Default OpenCode Parity
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 main 󰅖   2 fix-auth 󰢹 󰅖   3 + new 󰅖          ● RUNNING 12:45 ax │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 ax │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │ <- Row 1: Spacer
-│ $ agy run --model "Gemini 3.6 Flash (Medium)"                          │ <- Row 2+: Terminal
-│ Loaded 42 tools. Pair programming session ready.                       │
+├────────────────────────────────────────────────────────────────────────┤
+│ $ ax run -H claude                                                     │ <- Row 2+: Terminal
+│ Claude Code session ready.                                             │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -181,46 +217,33 @@ isolated_socket = false
 ### 2. Top Compact (`position = "top"`, `spacer_lines = 0`)
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 main 󰅖   2 fix-auth 󰢹 󰅖   3 + new 󰅖          ● RUNNING 12:45 ax │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 ax │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
-│ $ agy run --model "Gemini 3.6 Flash (Medium)"                          │ <- Row 1+: Terminal
-│ Loaded 42 tools. Pair programming session ready.                       │
+│ $ ax run -H agy                                                        │ <- Row 1+: Terminal
+│ Pair programming session ready.                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Bottom Spaced (`position = "bottom"`, `spacer_lines = 1`)
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ $ agy run --model "Gemini 3.6 Flash (Medium)"                          │ <- Rows 0..N-2
-│ Loaded 42 tools. Pair programming session ready.                       │
-├────────────────────────────────────────────────────────────────────────┤
-│                                                                        │ <- Row N-1: Spacer
-├────────────────────────────────────────────────────────────────────────┤
-│ #S  󰘳  1 main 󰅖   2 fix-auth 󰢹 󰅖   3 + new 󰅖          ● RUNNING 12:45 ax │ <- Row N: Tabs
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### 4. Vertical IDE Rail (`agymux layout` or `Ctrl+Space B` / `И`)
+### 3. Vertical IDE Rail (`ax layout` or `Ctrl+Space B` / `И`)
 When activated, horizontal status tabs hide (`status off`) and a vertical 42-column sidebar opens on the left (or right):
 ```text
 ┌──────────────────────────────────────────┬─────────────────────────────┐
-│ 󰘳 agymux Sessions                   [1] │ $ agy run                   │
+│ 󰘳 ax Sessions                       [1] │ $ ax run -H claude          │
 │                                          │                             │
-│ > 1  ● fix-search                        │ Running agent loop...       │
+│ > 1  󰊠  ● fix-search                     │ Running agent loop...       │
 │      git: feature/search-revamp          │ Executed search_web: 4 hits │
 │      turns: 12  tokens: 42.1k           │                             │
 │                                          │                             │
-│   2  󰢹 remote-control-tab                │                             │
+│   2  󰚩  󰢹 remote-control-tab             │                             │
 │      git: main                           │                             │
 │      turns: 3   tokens: 11.2k           │                             │
 │                                          │                             │
-│   3    plain-terminal                    │                             │
+│   3      plain-terminal                 │                             │
 │      git: main                           │                             │
 ├──────────────────────────────────────────┤                             │
 │ [Enter] Select  [x] Close  [q] Quit      │                             │
 └──────────────────────────────────────────┴─────────────────────────────┘
 ```
-On narrow viewports (< 106 columns), the rail dynamically switches to a compact 10-column icon bar.
 
 ---
 
@@ -229,7 +252,7 @@ On narrow viewports (< 106 columns), the rail dynamically switches to a compact 
 ### 1. OpenCode Parity (Default)
 Top tabs, 1-line breathing spacer, flat highlighted Octagon theme, and protected mouse close:
 ```toml
-# ~/.config/agymux/agymux.toml
+# ~/.config/ax/config.toml
 
 [theme]
 preset = "default"
@@ -245,32 +268,19 @@ show_close_button = true
 standard_width = 22
 ```
 
-### 2. Minimalist Compact
-Zero spacers, bottom positioning, no close buttons for purely keyboard-driven workflows:
+### 2. Multi-Harness Developer Setup
+Configured with multiple custom tools alongside Antigravity, Claude, and OpenCode:
 ```toml
-# ~/.config/agymux/agymux.toml
+# ~/.config/ax/config.toml
 
-[theme]
-status_position = "bottom"
+[general]
+startup_action = "ask"
 
-[theme.tabs]
-position = "bottom"
-spacer_lines = 0
-show_close_button = false
-alignment = "left"
-standard_width = 18
+[harnesses.aider]
+command = "aider"
+display_name = "Aider"
+icon = "󰚩"
+hotkey = "a"
+cyrillic_hotkey = "ф"
+args = ["--no-auto-commits"]
 ```
-
-### 3. IDE Vertical Sidebar Cockpit
-Vertical interactive sidebar rail positioned on the left side:
-```toml
-# ~/.config/agymux/agymux.toml
-
-[theme.tabs]
-layout = "vertical"
-sidebar_position = "left"
-```
-Or toggle on-the-fly inside any session with:
-- Shortcut: `Ctrl+Space B` (or `И` in RussianWin layout)
-- Command Palette: `Ctrl+Space p` -> `Toggle IDE Sidebar Layout`
-- CLI: `agymux layout`
