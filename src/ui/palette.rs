@@ -629,10 +629,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                         "new-window",
                         "-n",
                         "[fork]",
-                        &format!(
-                            "ax run --project '{}' --conversation '{}'",
-                            proj, conv_id
-                        ),
+                        &format!("ax run --project '{}' --conversation '{}'", proj, conv_id),
                     ])
                     .status();
             } else {
@@ -681,15 +678,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
         PaletteAction::SwitchTab => {
             let _ = Command::new("tmux")
-                .args([
-                    "display-popup",
-                    "-E",
-                    "-w",
-                    "85%",
-                    "-h",
-                    "80%",
-                    "ax switch",
-                ])
+                .args(["display-popup", "-E", "-w", "85%", "-h", "80%", "ax switch"])
                 .status();
         }
         PaletteAction::SwitchProject => {
@@ -707,15 +696,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
         PaletteAction::Shortcuts => {
             let _ = Command::new("tmux")
-                .args([
-                    "display-popup",
-                    "-E",
-                    "-w",
-                    "65%",
-                    "-h",
-                    "70%",
-                    "ax helper",
-                ])
+                .args(["display-popup", "-E", "-w", "65%", "-h", "70%", "ax helper"])
                 .status();
         }
         PaletteAction::Detach => {
@@ -766,15 +747,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
         PaletteAction::BindConversation => {
             let _ = Command::new("tmux")
-                .args([
-                    "display-popup",
-                    "-E",
-                    "-w",
-                    "75%",
-                    "-h",
-                    "60%",
-                    "ax bind",
-                ])
+                .args(["display-popup", "-E", "-w", "75%", "-h", "60%", "ax bind"])
                 .status();
         }
         PaletteAction::NewTerminalTab => {

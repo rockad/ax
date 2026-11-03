@@ -195,8 +195,14 @@ impl TmuxProfile {
         for (name, h_cfg) in &config.harnesses {
             if let Some(hk) = h_cfg.hotkey {
                 let upper = hk.to_uppercase().collect::<String>();
-                lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", hk, name));
-                lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", upper, name));
+                lines.push(format!(
+                    "bind {} new-window -n \"+ new\" \"ax run -H {}\"",
+                    hk, name
+                ));
+                lines.push(format!(
+                    "bind {} new-window -n \"+ new\" \"ax run -H {}\"",
+                    upper, name
+                ));
             }
         }
 
@@ -260,8 +266,14 @@ impl TmuxProfile {
             for (name, h_cfg) in &config.harnesses {
                 if let Some(chk) = h_cfg.cyrillic_hotkey {
                     let upper = chk.to_uppercase().collect::<String>();
-                    lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", chk, name));
-                    lines.push(format!("bind {} new-window -n \"+ new\" \"ax run -H {}\"", upper, name));
+                    lines.push(format!(
+                        "bind {} new-window -n \"+ new\" \"ax run -H {}\"",
+                        chk, name
+                    ));
+                    lines.push(format!(
+                        "bind {} new-window -n \"+ new\" \"ax run -H {}\"",
+                        upper, name
+                    ));
                 }
             }
 

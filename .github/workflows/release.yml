@@ -68,9 +68,6 @@ jobs:
             cargo build --release --target x86_64-apple-darwin
             cargo build --release --target aarch64-apple-darwin
             mkdir -p target/universal-apple-darwin/release
-            lipo -create -output target/universal-apple-darwin/release/agymux \
-              target/x86_64-apple-darwin/release/agymux \
-              target/aarch64-apple-darwin/release/agymux
             lipo -create -output target/universal-apple-darwin/release/ax \
               target/x86_64-apple-darwin/release/ax \
               target/aarch64-apple-darwin/release/ax
@@ -84,17 +81,15 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
-          ARCHIVE_NAME="agymux-${TAG}-${{ matrix.target }}"
+          ARCHIVE_NAME="ax-${TAG}-${{ matrix.target }}"
           PKG_DIR="dist/${ARCHIVE_NAME}"
           mkdir -p "${PKG_DIR}/config/tmux"
 
-          cp "target/${{ matrix.target }}/release/agymux" "${PKG_DIR}/"
           cp "target/${{ matrix.target }}/release/ax" "${PKG_DIR}/"
           cp README.md LICENSE "${PKG_DIR}/"
-          cp config/tmux/agymux.conf "${PKG_DIR}/config/tmux/"
-          cp -P config/tmux/agymux-tabs.conf "${PKG_DIR}/config/tmux/"
+          cp config/tmux/ax.conf "${PKG_DIR}/config/tmux/"
           cp install.sh "${PKG_DIR}/"
-          chmod +x "${PKG_DIR}/agymux" "${PKG_DIR}/ax" "${PKG_DIR}/install.sh"
+          chmod +x "${PKG_DIR}/ax" "${PKG_DIR}/install.sh"
 
           tar -czf "dist/${ARCHIVE_NAME}.tar.gz" -C dist "${ARCHIVE_NAME}"
 

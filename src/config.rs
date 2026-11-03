@@ -343,10 +343,15 @@ impl Config {
                                     }
                                     if let Some(single) = file_cfg.harness {
                                         if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                                            config.harnesses.entry(stem.to_string()).or_insert(single);
+                                            config
+                                                .harnesses
+                                                .entry(stem.to_string())
+                                                .or_insert(single);
                                         }
                                     }
-                                } else if let Ok(single) = toml::from_str::<CustomHarnessConfig>(&content) {
+                                } else if let Ok(single) =
+                                    toml::from_str::<CustomHarnessConfig>(&content)
+                                {
                                     if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
                                         config.harnesses.entry(stem.to_string()).or_insert(single);
                                     }
@@ -650,6 +655,9 @@ ANTHROPIC_API_KEY = "test-key"
         assert_eq!(aider.hotkey, Some('a'));
         assert_eq!(aider.cyrillic_hotkey, Some('ф'));
         assert_eq!(aider.args, vec!["--no-auto-commits"]);
-        assert_eq!(aider.env.get("ANTHROPIC_API_KEY").map(String::as_str), Some("test-key"));
+        assert_eq!(
+            aider.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("test-key")
+        );
     }
 }

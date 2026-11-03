@@ -4,20 +4,15 @@ use std::fmt;
 use std::path::PathBuf;
 use std::process::Command;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum AgentHarness {
+    #[default]
     Antigravity,
     ClaudeCode,
     OpenCode,
     Codex,
     PlainTerminal,
     Custom(String),
-}
-
-impl Default for AgentHarness {
-    fn default() -> Self {
-        Self::Antigravity
-    }
 }
 
 impl AgentHarness {
@@ -494,14 +489,8 @@ mod tests {
             AgentHarness::from_str_loose("open-code"),
             AgentHarness::OpenCode
         );
-        assert_eq!(
-            AgentHarness::from_str_loose("codex"),
-            AgentHarness::Codex
-        );
-        assert_eq!(
-            AgentHarness::from_str_loose("openai"),
-            AgentHarness::Codex
-        );
+        assert_eq!(AgentHarness::from_str_loose("codex"), AgentHarness::Codex);
+        assert_eq!(AgentHarness::from_str_loose("openai"), AgentHarness::Codex);
         assert_eq!(
             AgentHarness::from_str_loose("term"),
             AgentHarness::PlainTerminal
@@ -524,7 +513,10 @@ mod tests {
         assert_eq!(AgentHarness::OpenCode.as_str(), "opencode");
         assert_eq!(AgentHarness::Codex.as_str(), "codex");
         assert_eq!(AgentHarness::PlainTerminal.as_str(), "term");
-        assert_eq!(AgentHarness::Custom("my-bot".to_string()).as_str(), "my-bot");
+        assert_eq!(
+            AgentHarness::Custom("my-bot".to_string()).as_str(),
+            "my-bot"
+        );
     }
 
     #[test]
@@ -541,21 +533,30 @@ mod tests {
         assert_eq!(AgentHarness::OpenCode.default_command(), "opencode");
         assert_eq!(AgentHarness::Codex.default_command(), "codex");
         assert_eq!(AgentHarness::PlainTerminal.default_command(), "$SHELL");
-        assert_eq!(AgentHarness::Custom("tool".to_string()).default_command(), "tool");
+        assert_eq!(
+            AgentHarness::Custom("tool".to_string()).default_command(),
+            "tool"
+        );
 
         assert_eq!(AgentHarness::Antigravity.default_hotkey(), Some('n'));
         assert_eq!(AgentHarness::ClaudeCode.default_hotkey(), Some('c'));
         assert_eq!(AgentHarness::OpenCode.default_hotkey(), Some('o'));
         assert_eq!(AgentHarness::Codex.default_hotkey(), Some('x'));
         assert_eq!(AgentHarness::PlainTerminal.default_hotkey(), Some('t'));
-        assert_eq!(AgentHarness::Custom("bot".to_string()).default_hotkey(), None);
+        assert_eq!(
+            AgentHarness::Custom("bot".to_string()).default_hotkey(),
+            None
+        );
 
         assert_eq!(AgentHarness::Antigravity.cyrillic_hotkey(), Some('т'));
         assert_eq!(AgentHarness::ClaudeCode.cyrillic_hotkey(), Some('с'));
         assert_eq!(AgentHarness::OpenCode.cyrillic_hotkey(), Some('щ'));
         assert_eq!(AgentHarness::Codex.cyrillic_hotkey(), Some('ч'));
         assert_eq!(AgentHarness::PlainTerminal.cyrillic_hotkey(), Some('е'));
-        assert_eq!(AgentHarness::Custom("bot".to_string()).cyrillic_hotkey(), None);
+        assert_eq!(
+            AgentHarness::Custom("bot".to_string()).cyrillic_hotkey(),
+            None
+        );
     }
 
     #[test]

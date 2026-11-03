@@ -510,10 +510,7 @@ fn handle_attach(
             };
 
             let mut run_cmd = if let Some(ref lid) = latest_id {
-                format!(
-                    "ax run --project '{}' --conversation '{}'",
-                    project, lid
-                )
+                format!("ax run --project '{}' --conversation '{}'", project, lid)
             } else {
                 format!("ax run --project '{}'", project)
             };
@@ -1113,7 +1110,11 @@ fn run_runner(
         if let Some(ref cid) = conv_id {
             let _ = tmux::TmuxDriver::set_window_option(win_target, "@conversation_id", cid);
             if let Some(ref win) = target_window {
-                let _ = crate::core::TabRegistry::bind_with_harness_static(win, cid, agent_harness.clone());
+                let _ = crate::core::TabRegistry::bind_with_harness_static(
+                    win,
+                    cid,
+                    agent_harness.clone(),
+                );
             }
 
             let db = db_path();
@@ -1151,7 +1152,7 @@ fn run_runner(
     // 2. Background detached watcher retired: turn-driven tab titles are updated via agymux hook on Stop
 
     // 3. Assemble and execute harness command
-    let registry = crate::core::harness::HarnessRegistry::new_with_config(&config);
+    let registry = crate::core::harness::HarnessRegistry::new_with_config(config);
     let ctx = crate::core::harness::HarnessLaunchContext {
         project: project.to_string(),
         conversation_id: conv_id,
@@ -1686,9 +1687,6 @@ mod tests {
         assert!(read_back.get("other-hook").is_some());
         assert!(read_back.get("ax-tab-sync").is_some());
         assert_eq!(read_back["ax-tab-sync"]["enabled"], true);
-        assert_eq!(
-            read_back["ax-tab-sync"]["Stop"][0]["command"],
-            "ax hook"
-        );
+        assert_eq!(read_back["ax-tab-sync"]["Stop"][0]["command"], "ax hook");
     }
 }

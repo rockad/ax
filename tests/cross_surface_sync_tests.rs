@@ -106,8 +106,8 @@ fn test_cli_remote_control_flags() {
     }
 
     // Attach command with forwarded --remote-control
-    let cli_attach = Cli::try_parse_from(["ax", "attach", "--", "--remote-control"])
-        .expect("parsing succeeds");
+    let cli_attach =
+        Cli::try_parse_from(["ax", "attach", "--", "--remote-control"]).expect("parsing succeeds");
     match cli_attach.command {
         Some(Commands::Attach { args }) => {
             assert!(args.contains(&"--remote-control".to_string()));
