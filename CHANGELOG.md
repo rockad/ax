@@ -1,8 +1,17 @@
+## [0.7.0] - 2026-11-03
+
+### 🚀 Features
+
+- Evolve into pluggable multi-harness multiplexor and rebrand to ax
 ## [0.6.2] - 2026-10-29
 
 ### 🐛 Bug Fixes
 
 - *(profile)* Explicitly set status-format[0] and unset status-format[1] on reload
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Bump version to 0.6.2
 ## [0.6.1] - 2026-10-29
 
 ### 🚀 Features
