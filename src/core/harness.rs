@@ -68,7 +68,7 @@ impl AgentHarness {
             Self::Antigravity => Some('n'),
             Self::ClaudeCode => Some('c'),
             Self::OpenCode => Some('o'),
-            Self::Codex => Some('x'),
+            Self::Codex => None,
             Self::PlainTerminal => Some('t'),
             Self::Custom(_) => None,
         }
@@ -79,7 +79,7 @@ impl AgentHarness {
             Self::Antigravity => Some('т'),
             Self::ClaudeCode => Some('с'),
             Self::OpenCode => Some('щ'),
-            Self::Codex => Some('ч'),
+            Self::Codex => None,
             Self::PlainTerminal => Some('е'),
             Self::Custom(_) => None,
         }
@@ -264,11 +264,11 @@ impl HarnessDriver for CodexDriver {
     }
 
     fn default_hotkey(&self) -> Option<char> {
-        Some('x')
+        None
     }
 
     fn cyrillic_hotkey(&self) -> Option<char> {
-        Some('ч')
+        None
     }
 
     fn build_command(&self, ctx: &HarnessLaunchContext) -> Command {
@@ -541,7 +541,7 @@ mod tests {
         assert_eq!(AgentHarness::Antigravity.default_hotkey(), Some('n'));
         assert_eq!(AgentHarness::ClaudeCode.default_hotkey(), Some('c'));
         assert_eq!(AgentHarness::OpenCode.default_hotkey(), Some('o'));
-        assert_eq!(AgentHarness::Codex.default_hotkey(), Some('x'));
+        assert_eq!(AgentHarness::Codex.default_hotkey(), None);
         assert_eq!(AgentHarness::PlainTerminal.default_hotkey(), Some('t'));
         assert_eq!(
             AgentHarness::Custom("bot".to_string()).default_hotkey(),
@@ -551,7 +551,7 @@ mod tests {
         assert_eq!(AgentHarness::Antigravity.cyrillic_hotkey(), Some('т'));
         assert_eq!(AgentHarness::ClaudeCode.cyrillic_hotkey(), Some('с'));
         assert_eq!(AgentHarness::OpenCode.cyrillic_hotkey(), Some('щ'));
-        assert_eq!(AgentHarness::Codex.cyrillic_hotkey(), Some('ч'));
+        assert_eq!(AgentHarness::Codex.cyrillic_hotkey(), None);
         assert_eq!(AgentHarness::PlainTerminal.cyrillic_hotkey(), Some('е'));
         assert_eq!(
             AgentHarness::Custom("bot".to_string()).cyrillic_hotkey(),

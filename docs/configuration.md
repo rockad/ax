@@ -99,9 +99,10 @@ ANTHROPIC_API_KEY = "your-api-key"
 | `status_position` | `string` | `"top"` | `"top"`, `"bottom"` | Global tmux status line position. |
 | `status_style` | `string` (optional) | `None` | Tmux style string | Custom override for base status bar (`bg=#282a3a,fg=#eaf2f1`). |
 | `status_left` | `string` | `None` | Tmux format string | Custom override for left status section (Project pill or Prefix indicator). |
-| `status_right` | `string` | `None` | Tmux format string | Custom override for right status section (Running turn indicator, time, branding). |
+| `status_right` | `string` | `""` | Tmux format string | Custom override for right status section. Defaults to empty (`""`) to dedicate 100% of the top status line to the tab bar. |
 | `window_status_format` | `string` | `None` | Tmux format string | Custom template for inactive tabs. |
 | `window_status_current_format` | `string` | `None` | Tmux format string | Custom template for active tab. |
+| `pane_border_status` | `string` (optional) | `"bottom"` | `"bottom"`, `"top"`, `"off"` | Pane border statusline display. Defaults to `"bottom"` to display active harness, project, git branch, directory, and right-aligned time & date. Set to `"off"` to hide. |
 
 ---
 
@@ -192,10 +193,13 @@ Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separ
 
 ### 3. Right Click (`MouseDown3Status`)
 - Opens an interactive context menu directly at the mouse position:
-  - `Close Tab` (`q`)
+  - `Close Tab` (`x`)
   - `Rename Tab` (`r`)
   - `Fork Tab` (`f`)
   - `Reload Session` (`R`)
+
+### 4. Tab Drag & Drop (`MouseDrag1Status`)
+- Left-click and drag any tab horizontally across the status bar to silently swap and reorder tabs in real-time.
 
 ---
 

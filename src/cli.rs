@@ -115,9 +115,17 @@ pub enum Commands {
     /// Reload configuration, theme, and keybindings in active session
     Reload,
 
-    /// Internal lifecycle hook invoked by Antigravity on turn stop
+    /// Internal lifecycle hook invoked by Antigravity or harnesses on turn events
     #[command(hide = true)]
-    Hook,
+    Hook {
+        /// Running state: 1 (start/running), 0 (stopped/done)
+        #[arg(long)]
+        running: Option<String>,
+
+        /// Mark session turn as started
+        #[arg(long)]
+        start: bool,
+    },
 
     /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
@@ -322,7 +330,33 @@ mod tests {
     #[test]
     fn test_cli_hook_and_install_subcommands() {
         let cli_hook = Cli::try_parse_from(["ax", "hook"]).expect("parsing succeeds");
-        assert!(matches!(cli_hook.command, Some(Commands::Hook)));
+        assert!(matches!(
+            cli_hook.command,
+            Some(Commands::Hook {
+                running: None,
+                start: false
+            })
+        ));
+
+        let cli_hook_running =
+            Cli::try_parse_from(["ax", "hook", "--running", "0"]).expect("parsing succeeds");
+        assert!(matches!(
+            cli_hook_running.command,
+            Some(Commands::Hook {
+                running: Some(ref r),
+                start: false
+            }) if r == "0"
+        ));
+
+        let cli_hook_start =
+            Cli::try_parse_from(["ax", "hook", "--start"]).expect("parsing succeeds");
+        assert!(matches!(
+            cli_hook_start.command,
+            Some(Commands::Hook {
+                running: None,
+                start: true
+            })
+        ));
 
         let cli_install = Cli::try_parse_from(["ax", "install"]).expect("parsing succeeds");
         assert!(matches!(cli_install.command, Some(Commands::Install)));

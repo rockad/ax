@@ -15,7 +15,7 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 - **Google Antigravity (`agy`)** (`󰚩`): `Ctrl+Space n` / `т`
 - **Claude Code (`claude`)** (`󰊠`): `Ctrl+Space c` / `с`
 - **OpenCode (`opencode`)** (`󰘐`): `Ctrl+Space o` / `щ`
-- **Codex (`codex`)** (`󱚣`): `Ctrl+Space x` / `ч`
+- **Codex (`codex`)** (`󱚣`): `ax new -H codex` / Command Palette
 - **Plain Terminal (`term`)** (``): `Ctrl+Space t` / `е`
 - **Custom Pluggable Harnesses**: Configured in `~/.config/ax/config.toml` (`[harnesses.<name>]`) or modular `~/.config/ax/harnesses/*.toml` files with custom binary, icon, hotkey, cyrillic hotkey, args, and environment variables.
 
@@ -28,7 +28,7 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 - **First-Class Multi-Harness Ergonomics:** Launch and switch between Antigravity, Claude Code, OpenCode, Codex, and terminal shells inside a single unified session with dedicated icons in the tab strip.
 - **Pluggable Harness Architecture:** Define custom AI harnesses with custom hotkeys and environment overrides in `~/.config/ax/harnesses/*.toml`.
 - **Top Tab Strip with Dynamic Harness Icons:** Visual status strip positioned at the top of the terminal (`status-position top`) styled in `#282a3a` warm dark grey with crisp rectangular highlighted active tabs, breathing spacer, live harness icons (`󰚩`, `󰊠`, `󰘐`, `󱚣`, ``), and status badges (`󰢹`, `󰛌`, `󰂞`, `󰅖`).
-- **Protected Mouse Tab Ergonomics:** Left-click tabs to switch, click `󰅖` or middle-click to close (with an automatic confirmation guard protecting the last tab from closing the session), and right-click for a native context menu.
+- **Protected Mouse Tab Ergonomics:** Left-click tabs to switch, drag tabs with mouse to silently reorder, click `󰅖` or middle-click to close (with an automatic confirmation guard protecting the last tab from closing the session), and right-click for a native context menu.
 - **Vertical IDE Sidebar Rail (`Ctrl+Space B` / `И`):** Toggle an interactive 42-column sidebar rail (`ax layout`) showing git branches, conversation turn counts, token metrics, and instant hotkey selection (`1`..`9`).
 - **Two-Pane Conversation Switcher (`Ctrl+Space s` / `ы`):**
   - **Left Pane (45%):** Active open tabs and historical project conversations with fuzzy search. Supports `Tab` or `Ctrl+A` to toggle between **Local Project** and **Global Machine** search scope.
@@ -52,14 +52,13 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 | **New Antigravity Tab** | `Ctrl+Space n` / `N` / `т` / `Т` | `➕ New Tab (Antigravity)` |
 | **New Claude Code Tab** | `Ctrl+Space c` / `C` / `с` / `С` | `➕ New Tab (Claude Code)` |
 | **New OpenCode Tab** | `Ctrl+Space o` / `O` / `щ` / `Щ` | `➕ New Tab (OpenCode)` |
-| **New Codex Tab** | `Ctrl+Space x` / `X` / `ч` / `Ч` | `➕ New Tab (Codex)` |
 | **New Plain Terminal Tab** | `Ctrl+Space t` / `T` / `е` / `Е` | `💻 New Plain Terminal Tab` |
 | **Switch to Main Terminal** | `Ctrl+Space m` / `M` / `ь` / `Ь` | `🖥️ Switch to Main Terminal (main)` |
 | **New Worktree Tab** | `Ctrl+Space w` / `W` / `ц` / `Ц` | `📁 New Worktree Tab (Branch)` |
 | **Rename Active Tab** | `Ctrl+Space r` / `R` / `к` / `К` | `📝 Rename Active Tab` |
 | **Fork Conversation** | `Ctrl+Space f` / `F` / `а` / `А` | `🌿 Fork Conversation (-c)` |
 | **Launch with Custom Flags** | `Ctrl+Space l` / `L` / `д` / `Д` | `⚙️ Launch with Custom Flags` |
-| **Close Tab** | `Ctrl+Space q` / `Q` / `й` / `Й` / `&` | `🧹 Close Tab` |
+| **Close Tab** | `Ctrl+Space x` / `X` / `ч` / `Ч` (also `q` / `Q` / `й` / `Й` / `&`) | `🧹 Close Tab` |
 | **Detach Session** | `Ctrl+Space d` / `D` / `в` / `В` | `🚪 Detach Session` |
 | **Kill Session** | `Ctrl+Space k` / `K` / `л` / `Л` | `🛑 Kill Session (Exit Completely)` |
 | **Direct Tab Jump** | `Alt+1` .. `9` / `Ctrl+Space 1` .. `9` | N/A |

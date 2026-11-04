@@ -41,7 +41,7 @@ pub fn format_relative_time(epoch_secs: i64) -> String {
 }
 
 /// URL decode a percent-encoded string
-fn url_decode(s: &str) -> String {
+pub fn url_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut bytes = s.bytes();
     while let Some(b) = bytes.next() {

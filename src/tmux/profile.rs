@@ -66,14 +66,21 @@ impl TmuxProfile {
             }
         }
 
-        // Bottom pane-border statusline
-        lines.push("set -g pane-border-status bottom".to_string());
-        lines.push("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@active_harness},#{@active_harness},agy} #[default]· #[fg=colour250]#{pane_current_path}#[default] · #[fg=colour180]#(git -C #{pane_current_path} branch --show-current 2>/dev/null || git -C #{pane_current_path} rev-parse --abbrev-ref HEAD 2>/dev/null)#[default] · #[fg=colour244]%H:%M #[default]\"".to_string());
+        // Bottom pane-border statusline (default: bottom to host project, time, git, and path)
+        let border_status = config
+            .theme
+            .pane_border_status
+            .as_deref()
+            .unwrap_or("bottom");
+        lines.push(format!("set -g pane-border-status {}", border_status));
+        if border_status != "off" {
+            lines.push("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default] · #[fg=colour180]#(git -C #{pane_current_path} branch --show-current 2>/dev/null || git -C #{pane_current_path} rev-parse --abbrev-ref HEAD 2>/dev/null)#[default] · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\"".to_string());
+        }
 
-        // Style statusline messages so they don't clobber top tabs
+        // Style statusline messages so notifications/alerts are visible without obstructing
         lines.push("set -g message-style \"bg=colour235,fg=colour73,bold\"".to_string());
         lines.push("set -g message-command-style \"bg=colour235,fg=colour220,bold\"".to_string());
-        lines.push("set -g display-time 2000".to_string());
+        lines.push("set -g display-time 2500".to_string());
         lines.push(format!(
             "set -g status-justify {}",
             config.theme.tabs.alignment
@@ -131,7 +138,7 @@ impl TmuxProfile {
         }
 
         let default_window_format = format!(
-            "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {harness_icon} {title_token}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {harness_icon} {title_token}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I {harness_icon} {title_token}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}{close_suffix_dim}#[default]}}}}"
+            "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {harness_icon} {title_token}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {harness_icon} {title_token}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I {harness_icon} {title_token}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}{close_suffix_dim}#[default]}}}}"
         );
         let window_format = config
             .theme
@@ -145,7 +152,7 @@ impl TmuxProfile {
 
         // Active window format: focused tab using muted teal accent (colour73) with dark ink text
         let default_active_window_format = format!(
-            "#[fg=colour234]#[bg=colour73]#[bold] #I {harness_icon} {title_token}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default]"
+            "#[fg=colour234]#[bg=colour73]#[bold] #I {harness_icon} {title_token}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}{close_suffix}#[default]"
         );
         let active_window_format = config
             .theme
@@ -157,12 +164,8 @@ impl TmuxProfile {
             active_window_format
         ));
 
-        // Status Right: Model info & project · time · date (distinctive text colors)
-        let status_right = config
-            .theme
-            .status_right
-            .as_deref()
-            .unwrap_or("#{?#{@agy_running},#[fg=yellow,bold]● RUNNING  ,}#[fg=magenta]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}} #[fg=white]· #[fg=white]%H:%M #[fg=white]· #[fg=white]%Y-%m-%d #[default]");
+        // Status Right: Cleared by default to dedicate 100% of top row to tabs
+        let status_right = config.theme.status_right.as_deref().unwrap_or("");
         lines.push(format!("set -g status-right \"{}\"", status_right));
 
         // Prefix key
@@ -186,8 +189,6 @@ impl TmuxProfile {
         lines.push("bind C new-window -n \"+ new\" \"ax run -H claude\"".to_string());
         lines.push("bind o new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
         lines.push("bind O new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
-        lines.push("bind x new-window -n \"+ new\" \"ax run -H codex\"".to_string());
-        lines.push("bind X new-window -n \"+ new\" \"ax run -H codex\"".to_string());
         lines.push("bind t new-window -n \"term\" \"ax run -H term\"".to_string());
         lines.push("bind T new-window -n \"term\" \"ax run -H term\"".to_string());
 
@@ -207,11 +208,16 @@ impl TmuxProfile {
         }
 
         // Tab and session controls
-        lines.push("bind q confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
-        lines.push("bind Q confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
-        lines.push("bind & confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+        lines.push("bind x if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+        lines.push("bind X if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+        lines.push("bind q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+        lines.push("bind Q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+        lines.push("bind & if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
 
-        lines.push("bind r command-prompt -I \"#W\" \"rename-window '%%'\"".to_string());
+        lines.push(
+            "bind r command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
+                .to_string(),
+        );
         lines.push("bind R run-shell \"ax reload\"".to_string());
 
         lines.push("bind d detach-client".to_string());
@@ -257,8 +263,6 @@ impl TmuxProfile {
             lines.push("bind С new-window -n \"+ new\" \"ax run -H claude\"".to_string());
             lines.push("bind щ new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
             lines.push("bind Щ new-window -n \"+ new\" \"ax run -H opencode\"".to_string());
-            lines.push("bind ч new-window -n \"+ new\" \"ax run -H codex\"".to_string());
-            lines.push("bind Ч new-window -n \"+ new\" \"ax run -H codex\"".to_string());
             lines.push("bind е new-window -n \"term\" \"ax run -H term\"".to_string());
             lines.push("bind Е new-window -n \"term\" \"ax run -H term\"".to_string());
 
@@ -277,10 +281,12 @@ impl TmuxProfile {
                 }
             }
 
-            lines.push("bind й confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
-            lines.push("bind Й confirm-before -p \"Close tab #W? (y/n)\" kill-window".to_string());
+            lines.push("bind ч if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+            lines.push("bind Ч if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+            lines.push("bind й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
+            lines.push("bind Й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
 
-            lines.push("bind к command-prompt -I \"#W\" \"rename-window '%%'\"".to_string());
+            lines.push("bind к command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\"".to_string());
             lines.push("bind К run-shell \"ax reload\"".to_string());
 
             lines.push("bind в detach-client".to_string());
@@ -328,7 +334,9 @@ impl TmuxProfile {
         lines.push("bind Right next-window".to_string());
 
         // Silent tab reordering bindings
-        lines.push("bind-key -T root MouseDragEnd1Status swap-window -d -t =".to_string());
+        lines.push("bind-key -T root MouseDrag1Status if-shell -F '#{@drag_window}' { run-shell -C 'swap-window -d -s #{@drag_window} -t =' }".to_string());
+        lines.push("bind-key -T root MouseDragEnd1Status if-shell -F '#{@drag_window}' { run-shell -C 'swap-window -d -s #{@drag_window} -t =' ; set-option -u @drag_window }".to_string());
+        lines.push("bind-key -T root MouseUp1Status if-shell -F '#{@drag_window}' { if-shell -F '#{!=:#{@drag_window},#{window_id}}' { swap-window -d -s '#{@drag_window}' -t = } ; set-option -u @drag_window }".to_string());
         lines.push("bind-key -n C-S-Left swap-window -d -t -1".to_string());
         lines.push("bind-key -n C-S-Right swap-window -d -t +1".to_string());
         lines.push("bind < swap-window -d -t -1".to_string());
@@ -337,9 +345,9 @@ impl TmuxProfile {
         lines.push("bind Ю swap-window -d -t +1".to_string());
 
         // Mouse interactions for tabs
-        lines.push("bind-key -T root MouseDown1Status if-shell -F '#{m/r:^close,#{mouse_status_range}}' { run-shell 'ax close-window \"#{mouse_status_range}\"' } { switch-client -t = }".to_string());
+        lines.push("bind-key -T root MouseDown1Status if-shell -F '#{m/r:^close,#{mouse_status_range}}' { run-shell 'ax close-window \"#{mouse_status_range}\"' } { select-window -t = ; set-option -F @drag_window '#{window_id}' }".to_string());
         lines.push("bind-key -T root MouseDown2Status if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \"Close final tab #W? (y/n)\" \"kill-window -t =\" }".to_string());
-        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'rename-window -t = %%'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'ax palette fork'\" \"Reload Session\" R \"run-shell 'ax palette -a reload'\"".to_string());
+        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'rename-window -t = %%; set-option -w -t = @user_renamed 1'\" \"Reset Tab Title\" R \"set-option -w -t = @user_renamed 0; run-shell 'ax hook'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'ax palette fork'\" \"Reload Session\" S \"run-shell 'ax palette -a reload'\"".to_string());
 
         lines.join("\n") + "\n"
     }
@@ -397,11 +405,11 @@ mod tests {
         assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @external_sync 0\""));
         let harness_icon = "#{?#{==:#{E:@harness},claude},󰊠,#{?#{==:#{E:@harness},opencode},󰘐,#{?#{==:#{E:@harness},codex},󱚣,#{?#{==:#{E:@harness},term},,󰚩}}}}";
         let expected_win_fmt = format!(
-            "setw -g window-status-format \"#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}#[range=user|close:#{{window_id}}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}}}\"",
+            "setw -g window-status-format \"#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] 󰂞 #I {} #{{=22:window_name}}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] 󰛌 #I {} #{{=22:window_name}}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I {} #{{=22:window_name}}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, #[fg=colour75]󰢹#[fg=colour250],}}#[range=user|close:#{{window_id}}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}}}\"",
             harness_icon, harness_icon, harness_icon
         );
         let expected_current_fmt = format!(
-            "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I {} #{{=22:window_name}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default]\"",
+            "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I {} #{{=22:window_name}}#{{?#{{||:#{{@running}},#{{@agy_running}}}}, #[fg=colour220]#[bold]●,}}#{{?#{{@remote_control}}, 󰢹,}}#[range=user|close:#{{window_id}}] 󰅖#[norange] #[default]\"",
             harness_icon
         );
         let actual_win_fmt = content
@@ -412,9 +420,12 @@ mod tests {
         assert!(content.contains(&expected_current_fmt));
         assert!(content.contains("set -g status-left \"#{?#{client_prefix},#[fg=black]#[bg=brightred]#[bold] 󰘳 PREFIX #[default] ,}\""));
         assert!(content.contains("set -g status-position top"));
-        assert!(content.contains("set -g status on"));
         assert!(content.contains("set -g pane-border-status bottom"));
-        assert!(content.contains("bind-key -T root MouseDragEnd1Status swap-window -d -t ="));
+        assert!(content.contains("set -g status-right \"\""));
+        assert!(content.contains("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default] · #[fg=colour180]#(git -C #{pane_current_path} branch --show-current 2>/dev/null || git -C #{pane_current_path} rev-parse --abbrev-ref HEAD 2>/dev/null)#[default] · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\""));
+        assert!(content.contains("bind-key -T root MouseDrag1Status if-shell -F '#{@drag_window}' { run-shell -C 'swap-window -d -s #{@drag_window} -t =' }"));
+        assert!(content.contains("bind-key -T root MouseDragEnd1Status if-shell -F '#{@drag_window}' { run-shell -C 'swap-window -d -s #{@drag_window} -t =' ; set-option -u @drag_window }"));
+        assert!(content.contains("bind-key -T root MouseUp1Status if-shell -F '#{@drag_window}'"));
         assert!(content.contains("bind-key -n C-S-Left swap-window -d -t -1"));
         assert!(content.contains("bind-key -n C-S-Right swap-window -d -t +1"));
         assert!(content.contains("bind < swap-window -d -t -1"));
@@ -453,11 +464,13 @@ mod tests {
         assert!(content.contains("bind Right next-window"));
         assert!(content.contains("bind o new-window -n \"+ new\" \"ax run -H opencode\""));
         assert!(content.contains("bind O new-window -n \"+ new\" \"ax run -H opencode\""));
-        assert!(content.contains("bind x new-window -n \"+ new\" \"ax run -H codex\""));
-        assert!(content.contains("bind X new-window -n \"+ new\" \"ax run -H codex\""));
-        assert!(content.contains("bind q confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind Q confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind r command-prompt -I \"#W\" \"rename-window '%%'\""));
+        assert!(content.contains("bind x if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains("bind X if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains("bind q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains("bind Q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains(
+            "bind r command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
+        ));
         assert!(content.contains("bind R run-shell \"ax reload\""));
         assert!(content.contains("bind h display-popup -E -w 75% -h 70% \"ax helper\""));
         assert!(content.contains("bind H display-popup -E -w 75% -h 70% \"ax helper\""));
@@ -481,10 +494,10 @@ mod tests {
         assert!(content.contains("bind Т new-window -n \"+ new\" \"ax run -H agy\""));
         assert!(content.contains("bind щ new-window -n \"+ new\" \"ax run -H opencode\""));
         assert!(content.contains("bind Щ new-window -n \"+ new\" \"ax run -H opencode\""));
-        assert!(content.contains("bind ч new-window -n \"+ new\" \"ax run -H codex\""));
-        assert!(content.contains("bind Ч new-window -n \"+ new\" \"ax run -H codex\""));
         assert!(content.contains("bind е new-window -n \"term\" \"ax run -H term\""));
         assert!(content.contains("bind Е new-window -n \"term\" \"ax run -H term\""));
+        assert!(content.contains("bind ч if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains("bind Ч if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
         assert!(content.contains("bind ы display-popup -E -w 85% -h 75% \"ax switch\""));
         assert!(content.contains("bind Ы display-popup -E -w 85% -h 75% \"ax switch\""));
         assert!(content.contains("bind з display-popup -E -w 75% -h 60% \"ax palette\""));
@@ -497,9 +510,11 @@ mod tests {
         assert!(
             content.contains("bind Л confirm-before -p \"Kill session #S? (y/n)\" kill-session")
         );
-        assert!(content.contains("bind й confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind Й confirm-before -p \"Close tab #W? (y/n)\" kill-window"));
-        assert!(content.contains("bind к command-prompt -I \"#W\" \"rename-window '%%'\""));
+        assert!(content.contains("bind й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains("bind Й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
+        assert!(content.contains(
+            "bind к command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
+        ));
         assert!(content.contains("bind К run-shell \"ax reload\""));
         assert!(content.contains("bind р display-popup -E -w 75% -h 70% \"ax helper\""));
         assert!(content.contains("bind Р display-popup -E -w 75% -h 70% \"ax helper\""));
@@ -605,5 +620,15 @@ mod tests {
         let read = std::fs::read_to_string(&path).unwrap();
         assert!(read.contains("ax dynamic tmux configuration"));
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_profile_custom_pane_border_status() {
+        let mut config = Config::default();
+        config.theme.pane_border_status = Some("off".to_string());
+
+        let content = TmuxProfile::render_content(&config);
+        assert!(content.contains("set -g pane-border-status off"));
+        assert!(!content.contains("set -g pane-border-format"));
     }
 }

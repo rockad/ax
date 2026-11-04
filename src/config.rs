@@ -114,6 +114,8 @@ pub struct ThemeConfig {
     #[serde(default)]
     pub window_status_current_format: Option<String>,
     #[serde(default)]
+    pub pane_border_status: Option<String>,
+    #[serde(default)]
     pub tabs: TabsConfig,
 }
 
@@ -246,6 +248,7 @@ impl Default for ThemeConfig {
             status_right: None,
             window_status_format: None,
             window_status_current_format: None,
+            pane_border_status: None,
             tabs: TabsConfig::default(),
         }
     }

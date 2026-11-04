@@ -16,6 +16,7 @@ use crate::ui::theme::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaletteAction {
     RenameTab,
+    ResetTabTitle,
     NewTab,
     ForkConversation,
     NewWorktreeTab,
@@ -78,6 +79,12 @@ impl PaletteItem {
                 title: "Rename Tab",
                 shortcut: "Ctrl+Space r / к",
                 mnemonic: Some('r'),
+            },
+            PaletteItem {
+                action: PaletteAction::ResetTabTitle,
+                title: "Reset Tab Title",
+                shortcut: "ax hook",
+                mnemonic: Some('R'),
             },
             PaletteItem {
                 action: PaletteAction::CloseTab,
@@ -373,6 +380,15 @@ impl PaletteState {
                             || q == ">"
                             || q == "ю"
                     }
+                    PaletteAction::RenameTab => {
+                        "rename".contains(&q) || "title".contains(&q) || q == "r" || q == "к"
+                    }
+                    PaletteAction::ResetTabTitle => {
+                        "reset".contains(&q)
+                            || "auto-title".contains(&q)
+                            || "reset-title".contains(&q)
+                            || "reset-name".contains(&q)
+                    }
                     _ => false,
                 }
             })
@@ -606,10 +622,21 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
     let proj = project.unwrap_or("default");
     match action {
         PaletteAction::RenameTab => {
-            // Display tmux rename-window prompt
+            // Display tmux rename-window prompt and set user renamed flag
             let _ = Command::new("tmux")
-                .args(["command-prompt", "-I", "#W", "rename-window '%%'"])
+                .args([
+                    "command-prompt",
+                    "-I",
+                    "#W",
+                    "rename-window '%%'; set-option -w @user_renamed 1",
+                ])
                 .status();
+        }
+        PaletteAction::ResetTabTitle => {
+            let _ = Command::new("tmux")
+                .args(["set-option", "-w", "@user_renamed", "0"])
+                .status();
+            let _ = Command::new("tmux").args(["run-shell", "ax hook"]).status();
         }
         PaletteAction::NewTab => {
             let _ = Command::new("tmux")
@@ -669,10 +696,11 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         PaletteAction::CloseTab => {
             let _ = Command::new("tmux")
                 .args([
-                    "confirm-before",
-                    "-p",
-                    "kill-window #W? (y/n)",
+                    "if-shell",
+                    "-F",
+                    "#{>:#{session_windows},1}",
                     "kill-window",
+                    "confirm-before -p \"Close final tab #W? (y/n)\" kill-window",
                 ])
                 .status();
         }
