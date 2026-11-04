@@ -80,7 +80,7 @@ fn test_palette_modal_render_and_fuzzy_filter() {
     let mut terminal = Terminal::new(backend).unwrap();
     let mut state = PaletteState::new();
 
-    assert_eq!(state.items.len(), 28);
+    assert_eq!(state.items.len(), 30);
 
     terminal
         .draw(|f| palette::render(f, f.area(), &state))
@@ -266,6 +266,26 @@ fn test_palette_modal_render_and_fuzzy_filter() {
         );
     }
     assert_eq!(state.selected_action(), Some(PaletteAction::MoveTabRight));
+
+    // Test query for "join" finds JoinTab
+    state.query.clear();
+    for c in "join".chars() {
+        palette::handle_key(
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+            &mut state,
+        );
+    }
+    assert_eq!(state.selected_action(), Some(PaletteAction::JoinTab));
+
+    // Test query for "unsplit" finds UnsplitPane
+    state.query.clear();
+    for c in "unsplit".chars() {
+        palette::handle_key(
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+            &mut state,
+        );
+    }
+    assert_eq!(state.selected_action(), Some(PaletteAction::UnsplitPane));
 }
 
 #[test]

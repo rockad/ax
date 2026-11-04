@@ -56,6 +56,8 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 | **Switch to Main Terminal** | `Ctrl+Space m` / `M` / `ь` / `Ь` | `🖥️ Switch to Main Terminal (main)` |
 | **New Worktree Tab** | `Ctrl+Space w` / `W` / `ц` / `Ц` | `📁 New Worktree Tab (Branch)` |
 | **Rename Active Tab** | `Ctrl+Space r` / `R` / `к` / `К` | `📝 Rename Active Tab` |
+| **Join Tab as Split** | `Ctrl+Space j` / `J` / `о` / `О` | `🪟 Join Tab as Split (Horizontal/Vertical)` |
+| **Unsplit Pane to Tab** | `Ctrl+Space u` / `U` / `г` / `Г` | `📤 Unsplit Pane to Tab` |
 | **Fork Conversation** | `Ctrl+Space f` / `F` / `а` / `А` | `🌿 Fork Conversation (-c)` |
 | **Launch with Custom Flags** | `Ctrl+Space l` / `L` / `д` / `Д` | `⚙️ Launch with Custom Flags` |
 | **Close Tab** | `Ctrl+Space x` / `X` / `ч` / `Ч` (also `q` / `Q` / `й` / `Й` / `&`) | `🧹 Close Tab` |
@@ -72,6 +74,7 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 | Glyph | Meaning | Lifecycle |
 | :---: | :--- | :--- |
+| **`●`** | **Active Turn Running** | Golden amber dot indicates an agent turn is actively processing in that tab. |
 | **`󰢹`** | **Remote Control Session** | Displayed when a session runs with `--remote-control` active. |
 | **`󰛌`** | **External / Worktree Sync** | Changes synced from another workspace. Clears automatically on pane focus. |
 | **`󰂞`** | **Alert / Activity Flag** | Signals completed background turn, test failure, or terminal bell. |
@@ -80,9 +83,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 ### Mouse Controls
 
 - **Left-Click Tab**: Instantly switch to clicked tab.
+- **Drag Tab**: Drag and drop tabs across the status line to reorder them silently without focus disruption.
 - **Left-Click `󰅖`**: Close tab. If closing the final tab, prompts `Close final tab <title>? (y/n)` to prevent accidentally dropping the session.
 - **Middle-Click Tab**: Close tab with last-tab confirmation protection.
-- **Right-Click Tab**: Open context menu with quick actions (`Close Tab`, `Rename Tab`, `Fork Tab`, `Reload Session`).
+- **Right-Click Tab**: Open context menu with quick actions (`Close Tab`, `Rename Tab`, `Fork Tab`, `Join Tab as Split...`, `Unsplit Pane to Tab`, `Reload Session`).
 
 ---
 
@@ -140,6 +144,8 @@ Commands:
   helper   Display keyboard shortcuts cheatsheet modal
   new      Open a new conversation tab in current session
   bind     Bind a conversation to the current tab
+  join     Join another tab into current window as a split pane (-v for vertical)
+  unsplit  Break current split pane into its own standalone tab
   run      Internal process runner with instant prompt-based window naming
   preview  Render rich preview for a conversation ID
   layout   Toggle OpenCode-style vertical IDE sidebar layout or switch mode
@@ -153,6 +159,15 @@ Options:
   -d, --direct             Direct execution without tmux
   -V, --version            Print version
 ```
+
+---
+
+## Session Layout Persistence
+
+`ax` automatically snapshots and restores your workspace structure across reboots and relaunches:
+
+- **Automatic Snapshots**: Layout state (window indices, names, harnesses, conversation IDs, user-rename locks, and pane layouts) is saved to `~/.config/ax/sessions/<project>.json` on every reload and agent turn completion.
+- **Seamless Recovery**: When launching or attaching (`ax` / `ax attach`), `ax` detects if the session was restarted and automatically recreates tabs, harnesses, and layout splits matching your previous session snapshot.
 
 ---
 

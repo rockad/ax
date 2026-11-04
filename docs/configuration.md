@@ -17,6 +17,9 @@
 Generated tmux profiles and snippets are synchronized to:
 - `~/.config/tmux/ax.conf` (or custom profile target).
 
+Workspace layout snapshots are stored in:
+- `~/.config/ax/sessions/<project>.json`.
+
 ---
 
 ## Configuration Schema

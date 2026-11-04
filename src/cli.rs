@@ -127,6 +127,19 @@ pub enum Commands {
         start: bool,
     },
 
+    /// Join another tab into current window as a split pane
+    Join {
+        /// Target window index or id (e.g. 2, @2)
+        target: Option<String>,
+
+        /// Split vertically instead of horizontally
+        #[arg(short, long)]
+        vertical: bool,
+    },
+
+    /// Break current split pane into its own standalone tab
+    Unsplit,
+
     /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
 }
@@ -380,5 +393,29 @@ mod tests {
             }
             other => panic!("expected CloseWindow, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_cli_join_and_unsplit_subcommands() {
+        let cli_join = Cli::try_parse_from(["ax", "join", "2", "-v"]).expect("parsing succeeds");
+        match cli_join.command {
+            Some(Commands::Join { target, vertical }) => {
+                assert_eq!(target.as_deref(), Some("2"));
+                assert!(vertical);
+            }
+            other => panic!("expected Join, got {:?}", other),
+        }
+
+        let cli_join_default = Cli::try_parse_from(["ax", "join"]).expect("parsing succeeds");
+        match cli_join_default.command {
+            Some(Commands::Join { target, vertical }) => {
+                assert_eq!(target, None);
+                assert!(!vertical);
+            }
+            other => panic!("expected Join, got {:?}", other),
+        }
+
+        let cli_unsplit = Cli::try_parse_from(["ax", "unsplit"]).expect("parsing succeeds");
+        assert!(matches!(cli_unsplit.command, Some(Commands::Unsplit)));
     }
 }

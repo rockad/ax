@@ -43,6 +43,8 @@ pub enum PaletteAction {
     MoveTabLeft,
     MoveTabRight,
     ReloadConfig,
+    JoinTab,
+    UnsplitPane,
 }
 
 #[derive(Debug, Clone)]
@@ -224,6 +226,18 @@ impl PaletteItem {
                 shortcut: "Ctrl+Space R / К",
                 mnemonic: Some('R'),
             },
+            PaletteItem {
+                action: PaletteAction::JoinTab,
+                title: "Join Tab as Split Pane",
+                shortcut: "Ctrl+Space J / О",
+                mnemonic: Some('J'),
+            },
+            PaletteItem {
+                action: PaletteAction::UnsplitPane,
+                title: "Unsplit Pane into Standalone Tab",
+                shortcut: "Ctrl+Space U / Г",
+                mnemonic: Some('U'),
+            },
         ]
     }
 }
@@ -388,6 +402,20 @@ impl PaletteState {
                             || "auto-title".contains(&q)
                             || "reset-title".contains(&q)
                             || "reset-name".contains(&q)
+                    }
+                    PaletteAction::JoinTab => {
+                        "join".contains(&q)
+                            || "join-tab".contains(&q)
+                            || "split-with-tab".contains(&q)
+                            || q == "j"
+                            || q == "о"
+                    }
+                    PaletteAction::UnsplitPane => {
+                        "unsplit".contains(&q)
+                            || "unsplit-pane".contains(&q)
+                            || "break-tab".contains(&q)
+                            || q == "u"
+                            || q == "г"
                     }
                     _ => false,
                 }
@@ -948,6 +976,14 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     .args(["display-message", "ax: configuration reloaded"])
                     .status();
             }
+        }
+        PaletteAction::JoinTab => {
+            let _ = Command::new("tmux")
+                .args(["display-popup", "-E", "-w", "75%", "-h", "55%", "ax join"])
+                .status();
+        }
+        PaletteAction::UnsplitPane => {
+            let _ = Command::new("tmux").args(["break-pane", "-d"]).status();
         }
     }
     Ok(())

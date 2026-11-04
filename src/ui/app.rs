@@ -16,6 +16,7 @@ use crate::cli::ScopeArg;
 use crate::config::StartupAction;
 use crate::ui::{
     helper::{self, HelperState},
+    join_picker,
     palette::{self, PaletteResult, PaletteState},
     picker::{self, ItemKind, PickerResult, PickerState},
     project_picker::{self, ProjectPickerResult, ProjectPickerState},
@@ -282,6 +283,45 @@ pub fn run_startup_selector(
                         return Ok(Some((action, remember)));
                     }
                     startup::StartupResult::Cancel => {
+                        guard.leave();
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Run interactive tab join selector modal
+pub fn run_join_picker(
+    items: &[(String, String, String)],
+    vertical: bool,
+) -> Result<Option<String>> {
+    let mut guard = TerminalGuard::enter()?;
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
+    let mut state = join_picker::JoinPickerState::new(items, vertical);
+
+    loop {
+        terminal.draw(|f| {
+            let area = f.area();
+            join_picker::render(f, area, &state);
+        })?;
+
+        if event::poll(Duration::from_millis(50))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                match join_picker::handle_key(key, &mut state) {
+                    join_picker::JoinPickerResult::Continue => {}
+                    join_picker::JoinPickerResult::Select(win_index) => {
+                        guard.leave();
+                        return Ok(Some(win_index));
+                    }
+                    join_picker::JoinPickerResult::Cancel => {
                         guard.leave();
                         return Ok(None);
                     }

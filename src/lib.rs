@@ -115,6 +115,10 @@ pub fn run() -> Result<()> {
                     "reset-title" | "reset-name" | "auto-title" => {
                         ui::palette::PaletteAction::ResetTabTitle
                     }
+                    "join" | "join-tab" | "split-with-tab" => ui::palette::PaletteAction::JoinTab,
+                    "unsplit" | "unsplit-pane" | "break-tab" => {
+                        ui::palette::PaletteAction::UnsplitPane
+                    }
                     other => bail!("Unknown palette action: {}", other),
                 };
                 ui::palette::execute_action(act, Some(&project))?;
@@ -223,6 +227,14 @@ pub fn run() -> Result<()> {
 
         Some(Commands::CloseWindow { target }) => {
             run_close_window(target.as_deref())?;
+        }
+
+        Some(Commands::Join { target, vertical }) => {
+            run_join(target, vertical)?;
+        }
+
+        Some(Commands::Unsplit) => {
+            run_unsplit()?;
         }
 
         Some(Commands::Reload) => {
@@ -422,7 +434,18 @@ fn handle_attach(
         }
     }
 
-    // Session does not exist yet: dispatch according to startup_action
+    // Session does not exist yet: check if saved session layout snapshot exists to restore
+    if let Ok(true) = crate::core::restore_session_layout(project) {
+        if std::env::var("TMUX").is_ok() {
+            return tmux::TmuxDriver::switch_client(session_name);
+        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+            return tmux::TmuxDriver::attach_session(session_name);
+        } else {
+            return Ok(());
+        }
+    }
+
+    // Dispatch according to startup_action
     let mut startup_action = config.general.startup_action;
 
     if startup_action == crate::config::StartupAction::Ask {
@@ -1670,6 +1693,41 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
         }
     }
 
+    // Auto-save session layout snapshot
+    let active_proj = Command::new("tmux")
+        .args(["display-message", "-p", "#{@ax_project}"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            Command::new("tmux")
+                .args(["display-message", "-p", "#{session_name}"])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        String::from_utf8(o.stdout).ok()
+                    } else {
+                        None
+                    }
+                })
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.strip_prefix("agy-").unwrap_or(&s).to_string())
+        });
+
+    if let Some(ref p) = active_proj {
+        let _ = crate::core::save_session_layout(p);
+    }
+
     println!("{{}}");
     Ok(())
 }
@@ -1738,6 +1796,93 @@ pub fn run_close_window(target: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Join another tab into current window as a split pane
+pub fn run_join(target: Option<String>, vertical: bool) -> Result<()> {
+    if let Some(t) = target {
+        let split_flag = if vertical { "-v" } else { "-h" };
+        let target_arg = if t.starts_with(':') || t.starts_with('@') {
+            t
+        } else {
+            format!(":{}", t)
+        };
+        let status = Command::new("tmux")
+            .args(["join-pane", split_flag, "-s", &target_arg])
+            .status()?;
+        if !status.success() {
+            eprintln!("Failed to join tab {}", target_arg);
+        }
+        return Ok(());
+    }
+
+    // Query session windows excluding current window
+    let current_win = Command::new("tmux")
+        .args(["display-message", "-p", "#{window_index}"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let out = Command::new("tmux")
+        .args([
+            "list-windows",
+            "-F",
+            "#{window_index}|#{window_name}|#{window_active}|#{@harness}",
+        ])
+        .output()?;
+
+    let out_str = String::from_utf8_lossy(&out.stdout);
+    let mut candidates = Vec::new();
+    for line in out_str.lines() {
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() >= 4 {
+            let idx = parts[0].trim();
+            let name = parts[1].trim();
+            let active = parts[2].trim() == "1" || idx == current_win;
+            let harness = parts[3].trim();
+            if !active {
+                candidates.push((idx.to_string(), name.to_string(), harness.to_string()));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        if std::env::var("TMUX").is_ok() {
+            let _ = Command::new("tmux")
+                .args(["display-message", "No other tabs in this session to join"])
+                .status();
+        } else {
+            println!("No other tabs in this session to join");
+        }
+        return Ok(());
+    }
+
+    if let Some(selected_index) = ui::run_join_picker(&candidates, vertical)? {
+        let split_flag = if vertical { "-v" } else { "-h" };
+        let target_arg = format!(":{}", selected_index);
+        let _ = Command::new("tmux")
+            .args(["join-pane", split_flag, "-s", &target_arg])
+            .status();
+    }
+
+    Ok(())
+}
+
+/// Break current split pane into its own standalone tab
+pub fn run_unsplit() -> Result<()> {
+    let status = Command::new("tmux").args(["break-pane", "-d"]).status()?;
+    if !status.success() {
+        eprintln!("Failed to unsplit pane (pane might already be sole pane in window)");
+    }
+    Ok(())
+}
+
 pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
     let active_session = Command::new("tmux")
         .args(["display-message", "-p", "#{session_name}"])
@@ -1771,6 +1916,11 @@ pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
         .status();
 
     if status.success() {
+        let proj = active_session
+            .strip_prefix("agy-")
+            .unwrap_or(&active_session);
+        let _ = crate::core::save_session_layout(proj);
+
         let _ = Command::new("tmux")
             .args(["display-message", "ax: configuration reloaded"])
             .status();
