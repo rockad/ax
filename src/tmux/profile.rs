@@ -25,6 +25,8 @@ impl TmuxProfile {
             "set -s escape-time 0".to_string(),
             "set -g focus-events on".to_string(),
             "set-hook -g pane-focus-in \"set-option -w @external_sync 0\"".to_string(),
+            "set-hook -g client-detached \"run-shell 'ax reload'\"".to_string(),
+            "set-hook -g window-unlinked \"run-shell 'ax reload'\"".to_string(),
             "set -g mouse on".to_string(),
             "set -g base-index 1".to_string(),
             "setw -g pane-base-index 1".to_string(),
@@ -411,6 +413,8 @@ mod tests {
         assert!(!content.contains(''));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
         assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @external_sync 0\""));
+        assert!(content.contains("set-hook -g client-detached \"run-shell 'ax reload'\""));
+        assert!(content.contains("set-hook -g window-unlinked \"run-shell 'ax reload'\""));
         let expected_win_fmt = "setw -g window-status-format \"#{?#{||:#{window_activity_flag},#{window_bell_flag}},#[fg=colour16]#[bg=colour220]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour16],#{?#{@remote_control},󰢹 ,󰂞 }}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour39],#{?#{@remote_control},󰢹 ,󰛌 }}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour250],#{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}\"";
         let expected_current_fmt = "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour234],#{?#{@remote_control},#[fg=colour234]󰢹 #[fg=colour234],}}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default]\"";
         let actual_win_fmt = content

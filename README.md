@@ -166,8 +166,10 @@ Options:
 
 `ax` automatically snapshots and restores your workspace structure across reboots and relaunches:
 
-- **Automatic Snapshots**: Layout state (window indices, names, harnesses, conversation IDs, user-rename locks, and pane layouts) is saved to `~/.config/ax/sessions/<project>.json` on every reload and agent turn completion.
+- **Automatic Snapshots**: Layout state (window indices, names, harnesses, conversation IDs, user-rename locks, and pane layouts) is saved to `~/.config/ax/sessions/<project>.json` on every reload, client detach, window unlinking, and agent turn completion.
 - **Seamless Recovery**: When launching or attaching (`ax` / `ax attach`), `ax` detects if the session was restarted and automatically recreates tabs, harnesses, and layout splits matching your previous session snapshot.
+- **Manual Restoration**: Run `ax restore [project]` or trigger "Restore Session Layout" from the command palette (`Ctrl+Space p`) at any time.
+- **Tab Name & Pane Telemetry Preservation**: Renamed tabs retain their titles across restorations, and joined or split panes preserve individual harness status telemetry on their respective bottom pane borders.
 
 ---
 

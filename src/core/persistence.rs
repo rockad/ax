@@ -11,6 +11,8 @@ pub struct PaneSnapshot {
     pub index: usize,
     pub path: String,
     pub command: Option<String>,
+    #[serde(default)]
+    pub harness: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -107,7 +109,7 @@ pub fn save_session_layout(project: &str) -> Result<PathBuf> {
                 Some(parts[5].trim().to_string())
             };
 
-            // Query panes for this window: index, current path, current command
+            // Query panes for this window: index, current path, current command, pane-level harness
             let pane_target = format!("{}:{}", s_name, index);
             let pane_out = Command::new("tmux")
                 .args([
@@ -115,7 +117,7 @@ pub fn save_session_layout(project: &str) -> Result<PathBuf> {
                     "-t",
                     &pane_target,
                     "-F",
-                    "#{pane_index}|#{pane_current_path}|#{pane_current_command}",
+                    "#{pane_index}|#{pane_current_path}|#{pane_current_command}|#{@harness}",
                 ])
                 .output();
 
@@ -133,10 +135,16 @@ pub fn save_session_layout(project: &str) -> Result<PathBuf> {
                             } else {
                                 Some(pparts[2].trim().to_string())
                             };
+                            let pharness = pparts
+                                .get(3)
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string());
                             panes.push(PaneSnapshot {
                                 index: pidx,
                                 path,
                                 command: cmd,
+                                harness: pharness,
                             });
                         }
                     }
@@ -279,20 +287,31 @@ fn build_window_command(project: &str, win: &WindowSnapshot) -> String {
     if harness == "term" {
         return "$SHELL".to_string();
     }
+    let name_arg = if win.name != "+ new" && !win.name.is_empty() {
+        format!(" -n \"{}\"", win.name.replace('"', "\\\""))
+    } else {
+        String::new()
+    };
     if let Some(ref cid) = win.conversation_id {
         format!(
-            "ax run -H {} --project '{}' --conversation '{}'",
+            "ax run -H {} --project '{}'{name_arg} --conversation '{}'",
             harness, project, cid
         )
     } else {
-        format!("ax run -H {} --project '{}'", harness, project)
+        format!("ax run -H {} --project '{}'{name_arg}", harness, project)
     }
 }
 
 fn apply_window_snapshot_options(session: &str, win: &WindowSnapshot) {
     let target = format!("{}:{}", session, win.index);
+    if !win.name.is_empty() {
+        let _ = crate::tmux::TmuxDriver::rename_window(&target, &win.name);
+    }
     if let Some(ref h) = win.harness {
         let _ = crate::tmux::TmuxDriver::set_window_option(&target, "@harness", h);
+        let _ = Command::new("tmux")
+            .args(["set-option", "-p", "-t", &target, "@harness", h])
+            .status();
     }
     if let Some(ref cid) = win.conversation_id {
         let _ = crate::tmux::TmuxDriver::set_window_option(&target, "@conversation_id", cid);
@@ -309,6 +328,20 @@ fn restore_panes_and_layout(session: &str, win: &WindowSnapshot) {
         for pane in &win.panes[1..] {
             let _ = Command::new("tmux")
                 .args(["split-window", "-t", &target, "-c", &pane.path])
+                .status();
+            if let Some(ref h) = pane.harness {
+                let pane_target = format!("{}.{}", target, pane.index);
+                let _ = Command::new("tmux")
+                    .args(["set-option", "-p", "-t", &pane_target, "@harness", h])
+                    .status();
+            }
+        }
+    }
+    if let Some(first_pane) = win.panes.first() {
+        if let Some(ref h) = first_pane.harness {
+            let pane_target = format!("{}.{}", target, first_pane.index);
+            let _ = Command::new("tmux")
+                .args(["set-option", "-p", "-t", &pane_target, "@harness", h])
                 .status();
         }
     }
@@ -342,11 +375,13 @@ mod tests {
                             index: 0,
                             path: "/home/user/project".to_string(),
                             command: Some("zsh".to_string()),
+                            harness: Some("agy".to_string()),
                         },
                         PaneSnapshot {
                             index: 1,
                             path: "/home/user/project/src".to_string(),
                             command: None,
+                            harness: None,
                         },
                     ],
                 },
@@ -361,6 +396,7 @@ mod tests {
                         index: 0,
                         path: "/home/user/project".to_string(),
                         command: Some("claude".to_string()),
+                        harness: Some("claude".to_string()),
                     }],
                 },
             ],

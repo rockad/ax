@@ -45,6 +45,7 @@ pub enum PaletteAction {
     ReloadConfig,
     JoinTab,
     UnsplitPane,
+    RestoreSession,
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +239,12 @@ impl PaletteItem {
                 shortcut: "Ctrl+Space U / Г",
                 mnemonic: Some('U'),
             },
+            PaletteItem {
+                action: PaletteAction::RestoreSession,
+                title: "Restore Session Layout",
+                shortcut: "ax restore",
+                mnemonic: None,
+            },
         ]
     }
 }
@@ -416,6 +423,12 @@ impl PaletteState {
                             || "break-tab".contains(&q)
                             || q == "u"
                             || q == "г"
+                    }
+                    PaletteAction::RestoreSession => {
+                        "restore".contains(&q)
+                            || "layout".contains(&q)
+                            || "recover".contains(&q)
+                            || "snapshot".contains(&q)
                     }
                     _ => false,
                 }
@@ -985,6 +998,25 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         PaletteAction::UnsplitPane => {
             let _ = Command::new("tmux").args(["break-pane", "-d"]).status();
         }
+        PaletteAction::RestoreSession => match crate::core::restore_session_layout(proj) {
+            Ok(true) => {
+                let toast = format!("Restored session layout for '{}'", proj);
+                let _ = Command::new("tmux")
+                    .args(["display-message", &toast])
+                    .status();
+            }
+            Ok(false) => {
+                let _ = Command::new("tmux")
+                    .args(["display-message", "No saved session snapshot to restore"])
+                    .status();
+            }
+            Err(e) => {
+                let err_msg = format!("Restore failed: {}", e);
+                let _ = Command::new("tmux")
+                    .args(["display-message", &err_msg])
+                    .status();
+            }
+        },
     }
     Ok(())
 }

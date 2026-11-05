@@ -85,6 +85,10 @@ pub enum Commands {
 
     /// Internal process runner with instant prompt-based window naming
     Run {
+        /// Optional initial window/tab name
+        #[arg(short = 'n', long = "name")]
+        name: Option<String>,
+
         /// Target agent harness (agy, claude, opencode, codex, term, or custom)
         #[arg(short = 'H', long = "harness", default_value = "agy")]
         harness: String,
@@ -143,6 +147,12 @@ pub enum Commands {
 
     /// Break current split pane into its own standalone tab
     Unsplit,
+
+    /// Restore session tabs and split layouts from saved snapshot
+    Restore {
+        /// Project name (defaults to current project)
+        project: Option<String>,
+    },
 
     /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
@@ -284,6 +294,8 @@ mod tests {
         let cli = Cli::try_parse_from([
             "ax",
             "run",
+            "-n",
+            "custom-tab",
             "-H",
             "term",
             "--",
@@ -293,11 +305,34 @@ mod tests {
         ])
         .expect("parsing succeeds");
         match cli.command {
-            Some(Commands::Run { harness, args }) => {
+            Some(Commands::Run {
+                name,
+                harness,
+                args,
+            }) => {
+                assert_eq!(name.as_deref(), Some("custom-tab"));
                 assert_eq!(harness, "term");
                 assert_eq!(args, vec!["--conversation", "uuid-123", "hello"]);
             }
             other => panic!("expected Run, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_restore_subcommand() {
+        let cli_default = Cli::try_parse_from(["ax", "restore"]).expect("parsing succeeds");
+        match cli_default.command {
+            Some(Commands::Restore { project }) => assert_eq!(project, None),
+            other => panic!("expected Restore None, got {:?}", other),
+        }
+
+        let cli_proj =
+            Cli::try_parse_from(["ax", "restore", "my-project"]).expect("parsing succeeds");
+        match cli_proj.command {
+            Some(Commands::Restore { project }) => {
+                assert_eq!(project.as_deref(), Some("my-project"))
+            }
+            other => panic!("expected Restore my-project, got {:?}", other),
         }
     }
 

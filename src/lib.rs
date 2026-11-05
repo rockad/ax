@@ -135,6 +135,9 @@ pub fn run() -> Result<()> {
                     "unsplit" | "unsplit-pane" | "break-tab" => {
                         ui::palette::PaletteAction::UnsplitPane
                     }
+                    "restore" | "restore-session" | "restore-layout" => {
+                        ui::palette::PaletteAction::RestoreSession
+                    }
                     other => bail!("Unknown palette action: {}", other),
                 };
                 ui::palette::execute_action(act, Some(&project))?;
@@ -228,9 +231,13 @@ pub fn run() -> Result<()> {
             }
         }
 
-        Some(Commands::Run { harness, args }) => {
+        Some(Commands::Run {
+            name,
+            harness,
+            args,
+        }) => {
             let rc = remote_control || args.contains(&"--remote-control".to_string());
-            run_runner(&project, args, rc, &harness, &config)?;
+            run_runner(&project, name, args, rc, &harness, &config)?;
         }
 
         Some(Commands::Preview { conversation_id }) => {
@@ -251,6 +258,36 @@ pub fn run() -> Result<()> {
 
         Some(Commands::Unsplit) => {
             run_unsplit()?;
+        }
+
+        Some(Commands::Restore {
+            project: restore_proj,
+        }) => {
+            let target_project = restore_proj.unwrap_or_else(|| project.clone());
+            match crate::core::restore_session_layout(&target_project) {
+                Ok(true) => {
+                    println!("Restored session layout for '{}'", target_project);
+                    let target_session = if target_project.starts_with("agy-") {
+                        target_project
+                    } else {
+                        format!("agy-{}", target_project)
+                    };
+                    if std::env::var("TMUX").is_ok() {
+                        tmux::TmuxDriver::switch_client(&target_session)?;
+                    } else {
+                        tmux::TmuxDriver::attach_session(&target_session)?;
+                    }
+                }
+                Ok(false) => {
+                    println!(
+                        "No saved session snapshot found for '{}' (or session already active)",
+                        target_project
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Failed to restore session snapshot: {}", e);
+                }
+            }
         }
 
         Some(Commands::Reload) => {
@@ -467,6 +504,7 @@ fn handle_attach(
                     if &curr_session == target_session {
                         return run_runner(
                             project,
+                            None,
                             args.to_vec(),
                             effective_remote_control,
                             effective_harness,
@@ -493,6 +531,7 @@ fn handle_attach(
                     // Already inside: run agy -c in this window
                     return run_runner(
                         project,
+                        None,
                         vec!["-c".to_string()],
                         effective_remote_control,
                         effective_harness,
@@ -564,6 +603,41 @@ fn handle_attach(
         }
     }
 
+    // Session does not exist yet: check if saved session layout snapshot exists to restore
+    if let Ok(true) = crate::core::restore_session_layout(project) {
+        if let Some(req_harness) = harness {
+            let out = Command::new("tmux")
+                .args([
+                    "list-windows",
+                    "-t",
+                    session_name,
+                    "-F",
+                    "#{window_id}:#{@harness}",
+                ])
+                .output();
+            if let Ok(o) = out {
+                let s = String::from_utf8_lossy(&o.stdout);
+                for line in s.lines() {
+                    let parts: Vec<&str> = line.split(':').collect();
+                    if parts.len() >= 2 && parts[1].trim() == req_harness {
+                        let win_id = parts[0].trim();
+                        let _ = Command::new("tmux")
+                            .args(["select-window", "-t", win_id])
+                            .status();
+                        break;
+                    }
+                }
+            }
+        }
+        if std::env::var("TMUX").is_ok() {
+            return tmux::TmuxDriver::switch_client(session_name);
+        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+            return tmux::TmuxDriver::attach_session(session_name);
+        } else {
+            return Ok(());
+        }
+    }
+
     // Session does not exist yet and no args:
     // If an explicit harness was requested, skip Ask and immediately create session
     if harness.is_some() {
@@ -582,17 +656,6 @@ fn handle_attach(
             Some(&run_cmd),
             Some(tab_name),
         )?;
-        if std::env::var("TMUX").is_ok() {
-            return tmux::TmuxDriver::switch_client(session_name);
-        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
-            return tmux::TmuxDriver::attach_session(session_name);
-        } else {
-            return Ok(());
-        }
-    }
-
-    // Session does not exist yet: check if saved session layout snapshot exists to restore
-    if let Ok(true) = crate::core::restore_session_layout(project) {
         if std::env::var("TMUX").is_ok() {
             return tmux::TmuxDriver::switch_client(session_name);
         } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
@@ -1205,6 +1268,7 @@ pub fn build_agy_args(
 /// Internal process runner with instant prompt-based window naming and title watcher
 fn run_runner(
     project: &str,
+    name: Option<String>,
     args: Vec<String>,
     remote_control: bool,
     harness: &str,
@@ -1300,6 +1364,46 @@ fn run_runner(
         let _ = tmux::TmuxDriver::set_window_option(win_target, "@remote_control", rc_val);
         let _ = tmux::TmuxDriver::set_window_option(win_target, "@harness", agent_harness.as_str());
 
+        // Set @harness at the pane level so split panes in the same window show their own harness
+        if let Ok(pane_id) = std::env::var("TMUX_PANE") {
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-p",
+                    "-t",
+                    &pane_id,
+                    "@harness",
+                    agent_harness.as_str(),
+                ])
+                .status();
+        } else {
+            let _ = Command::new("tmux")
+                .args(["set-option", "-p", "@harness", agent_harness.as_str()])
+                .status();
+        }
+
+        // Check if user has explicitly named/renamed the tab
+        let is_user_renamed = if let Some(ref custom_name) = name {
+            let _ = tmux::TmuxDriver::rename_window(win_target, custom_name);
+            let _ = tmux::TmuxDriver::set_window_option(win_target, "@user_renamed", "1");
+            true
+        } else {
+            let out = Command::new("tmux")
+                .args([
+                    "display-message",
+                    "-p",
+                    "-t",
+                    win_target,
+                    "#{@user_renamed}",
+                ])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+            out == "1"
+        };
+
         if let Some(ref cid) = conv_id {
             let _ = tmux::TmuxDriver::set_window_option(win_target, "@conversation_id", cid);
             if let Some(ref win) = target_window {
@@ -1310,32 +1414,38 @@ fn run_runner(
                 );
             }
 
-            let db = db_path();
-            if db.exists() {
-                if let Ok(conn) = rusqlite::Connection::open(&db) {
-                    let stmt = conn
-                        .prepare("SELECT title FROM conversation_summaries WHERE conversation_id = ?1 LIMIT 1")
-                        .ok();
-                    if let Some(mut s) = stmt {
-                        if let Ok(title) = s.query_row([cid], |r| r.get::<_, String>(0)) {
-                            let clean_title = sanitize_title(&title);
-                            let _ = tmux::TmuxDriver::rename_window(win_target, &clean_title);
+            if !is_user_renamed {
+                let db = db_path();
+                if db.exists() {
+                    if let Ok(conn) = rusqlite::Connection::open(&db) {
+                        let stmt = conn
+                            .prepare("SELECT title FROM conversation_summaries WHERE conversation_id = ?1 LIMIT 1")
+                            .ok();
+                        if let Some(mut s) = stmt {
+                            if let Ok(title) = s.query_row([cid], |r| r.get::<_, String>(0)) {
+                                let clean_title = sanitize_title(&title);
+                                let _ = tmux::TmuxDriver::rename_window(win_target, &clean_title);
+                            }
                         }
                     }
                 }
             }
         } else if let Some(ref prompt) = initial_prompt {
-            let clean_prompt = sanitize_title(prompt);
-            let _ = tmux::TmuxDriver::rename_window(win_target, &clean_prompt);
+            if !is_user_renamed {
+                let clean_prompt = sanitize_title(prompt);
+                let _ = tmux::TmuxDriver::rename_window(win_target, &clean_prompt);
+            }
             if let Some(ref win) = target_window {
                 let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness.clone());
             }
         } else {
-            let initial_name = match agent_harness {
-                crate::core::AgentHarness::PlainTerminal => "term",
-                _ => "+ new",
-            };
-            let _ = tmux::TmuxDriver::rename_window(win_target, initial_name);
+            if !is_user_renamed {
+                let initial_name = match agent_harness {
+                    crate::core::AgentHarness::PlainTerminal => "term",
+                    _ => "+ new",
+                };
+                let _ = tmux::TmuxDriver::rename_window(win_target, initial_name);
+            }
             if let Some(ref win) = target_window {
                 let _ = crate::core::TabRegistry::set_harness_static(win, agent_harness.clone());
             }
@@ -1965,6 +2075,24 @@ pub fn run_close_window(target: Option<&str>) -> Result<()> {
 
 /// Join another tab into current window as a split pane
 pub fn run_join(target: Option<String>, vertical: bool) -> Result<()> {
+    // Ensure destination pane explicitly retains its harness at pane level
+    let cur_harness = Command::new("tmux")
+        .args([
+            "display-message",
+            "-p",
+            "#{?#{@harness},#{@harness},#{pane_current_command}}",
+        ])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    if !cur_harness.is_empty() {
+        let _ = Command::new("tmux")
+            .args(["set-option", "-p", "@harness", &cur_harness])
+            .status();
+    }
+
     if let Some(t) = target {
         let split_flag = if vertical { "-v" } else { "-h" };
         let target_arg = if t.starts_with(':') || t.starts_with('@') {
@@ -1972,11 +2100,39 @@ pub fn run_join(target: Option<String>, vertical: bool) -> Result<()> {
         } else {
             format!(":{}", t)
         };
+        let src_info = Command::new("tmux")
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                &target_arg,
+                "#{pane_id}|#{?#{@harness},#{@harness},#{pane_current_command}}",
+            ])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        let src_parts: Vec<&str> = src_info.split('|').collect();
+        let src_pane_id = src_parts.first().copied().unwrap_or("").to_string();
+        let src_harness = src_parts.get(1).copied().unwrap_or("").to_string();
+
         let status = Command::new("tmux")
             .args(["join-pane", split_flag, "-s", &target_arg])
             .status()?;
         if !status.success() {
             eprintln!("Failed to join tab {}", target_arg);
+        } else if !src_pane_id.is_empty() && !src_harness.is_empty() {
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-p",
+                    "-t",
+                    &src_pane_id,
+                    "@harness",
+                    &src_harness,
+                ])
+                .status();
         }
         return Ok(());
     }
@@ -2033,9 +2189,39 @@ pub fn run_join(target: Option<String>, vertical: bool) -> Result<()> {
     if let Some(selected_index) = ui::run_join_picker(&candidates, vertical)? {
         let split_flag = if vertical { "-v" } else { "-h" };
         let target_arg = format!(":{}", selected_index);
-        let _ = Command::new("tmux")
+        let src_info = Command::new("tmux")
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                &target_arg,
+                "#{pane_id}|#{?#{@harness},#{@harness},#{pane_current_command}}",
+            ])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        let src_parts: Vec<&str> = src_info.split('|').collect();
+        let src_pane_id = src_parts.first().copied().unwrap_or("").to_string();
+        let src_harness = src_parts.get(1).copied().unwrap_or("").to_string();
+
+        let status = Command::new("tmux")
             .args(["join-pane", split_flag, "-s", &target_arg])
             .status();
+
+        if status.is_ok() && !src_pane_id.is_empty() && !src_harness.is_empty() {
+            let _ = Command::new("tmux")
+                .args([
+                    "set-option",
+                    "-p",
+                    "-t",
+                    &src_pane_id,
+                    "@harness",
+                    &src_harness,
+                ])
+                .status();
+        }
     }
 
     Ok(())
