@@ -154,6 +154,17 @@ pub enum Commands {
         project: Option<String>,
     },
 
+    /// Rename active tab and synchronize title to backing harness conversation
+    #[command(alias = "rename-tab")]
+    Rename {
+        /// New title for the tab and conversation (prompts interactively if omitted)
+        title: Option<String>,
+
+        /// Optional target window (defaults to current window)
+        #[arg(short, long)]
+        target: Option<String>,
+    },
+
     /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
 }
@@ -333,6 +344,38 @@ mod tests {
                 assert_eq!(project.as_deref(), Some("my-project"))
             }
             other => panic!("expected Restore my-project, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_rename_subcommand() {
+        let cli_default = Cli::try_parse_from(["ax", "rename"]).expect("parsing succeeds");
+        match cli_default.command {
+            Some(Commands::Rename { title, target }) => {
+                assert_eq!(title, None);
+                assert_eq!(target, None);
+            }
+            other => panic!("expected Rename None, got {:?}", other),
+        }
+
+        let cli_full =
+            Cli::try_parse_from(["ax", "rename", "my-tab", "-t", ":2"]).expect("parsing succeeds");
+        match cli_full.command {
+            Some(Commands::Rename { title, target }) => {
+                assert_eq!(title.as_deref(), Some("my-tab"));
+                assert_eq!(target.as_deref(), Some(":2"));
+            }
+            other => panic!("expected Rename my-tab, got {:?}", other),
+        }
+
+        let cli_alias =
+            Cli::try_parse_from(["ax", "rename-tab", "alias-tab"]).expect("parsing succeeds");
+        match cli_alias.command {
+            Some(Commands::Rename { title, target }) => {
+                assert_eq!(title.as_deref(), Some("alias-tab"));
+                assert_eq!(target, None);
+            }
+            other => panic!("expected Rename alias-tab, got {:?}", other),
         }
     }
 

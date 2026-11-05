@@ -1,6 +1,6 @@
 [package]
 name = "ax"
-version = "0.8.2"
+version = "0.8.3"
 default-run = "ax"
 edition = "2021"
 authors = ["Aleksandr Korolev"]

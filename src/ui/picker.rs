@@ -7,7 +7,6 @@ use ratatui::{
     widgets::{Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
-use rusqlite::Connection;
 use serde_json::Value;
 use std::{
     collections::HashMap,
@@ -23,6 +22,66 @@ use crate::ui::theme::{
     COLOR_MUTED, COLOR_PINK, COLOR_PURPLE, COLOR_YELLOW,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategoryFilter {
+    All,
+    OpenTabs,
+    Antigravity,
+    Claude,
+    OpenCode,
+}
+
+impl CategoryFilter {
+    pub fn all() -> &'static [CategoryFilter] {
+        &[
+            CategoryFilter::All,
+            CategoryFilter::OpenTabs,
+            CategoryFilter::Antigravity,
+            CategoryFilter::Claude,
+            CategoryFilter::OpenCode,
+        ]
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            CategoryFilter::All => "All",
+            CategoryFilter::OpenTabs => "Open Tabs",
+            CategoryFilter::Antigravity => "󰚩 agy",
+            CategoryFilter::Claude => "󰊠 claude",
+            CategoryFilter::OpenCode => "󰘐 opencode",
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            CategoryFilter::All => CategoryFilter::OpenTabs,
+            CategoryFilter::OpenTabs => CategoryFilter::Antigravity,
+            CategoryFilter::Antigravity => CategoryFilter::Claude,
+            CategoryFilter::Claude => CategoryFilter::OpenCode,
+            CategoryFilter::OpenCode => CategoryFilter::All,
+        }
+    }
+
+    pub fn prev(&self) -> Self {
+        match self {
+            CategoryFilter::All => CategoryFilter::OpenCode,
+            CategoryFilter::OpenTabs => CategoryFilter::All,
+            CategoryFilter::Antigravity => CategoryFilter::OpenTabs,
+            CategoryFilter::Claude => CategoryFilter::Antigravity,
+            CategoryFilter::OpenCode => CategoryFilter::Claude,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CollisionState {
+    pub target_session: String,
+    pub target_window_index: usize,
+    pub conversation_id: String,
+    pub harness: crate::core::AgentHarness,
+    pub project: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum ItemKind {
     NewTab,
@@ -33,6 +92,7 @@ pub enum ItemKind {
         is_active: bool,
         conversation_id: Option<String>,
         pane_path: String,
+        harness: crate::core::AgentHarness,
     },
     Historical {
         conversation_id: String,
@@ -40,6 +100,8 @@ pub enum ItemKind {
         relative_time: String,
         project: String,
         step_count: i64,
+        harness: crate::core::AgentHarness,
+        last_modified_epoch: i64,
     },
 }
 
@@ -67,6 +129,9 @@ pub struct PickerState {
     pub project_name: String,
     pub workdir: PathBuf,
     pub query: String,
+    pub category: CategoryFilter,
+    pub collision_prompt: Option<CollisionState>,
+    pub open_convs: HashMap<String, (String, usize)>,
     pub all_candidates: Vec<PickerCandidate>,
     pub filtered_indices: Vec<usize>,
     pub selected: usize,
@@ -80,6 +145,9 @@ impl PickerState {
             project_name,
             workdir,
             query: String::new(),
+            category: CategoryFilter::All,
+            collision_prompt: None,
+            open_convs: HashMap::new(),
             all_candidates: Vec::new(),
             filtered_indices: Vec::new(),
             selected: 0,
@@ -95,6 +163,34 @@ impl PickerState {
             ScopeArg::Global => ScopeArg::Local,
         };
         self.reload_candidates();
+    }
+
+    pub fn category_count(&self, cat: CategoryFilter) -> usize {
+        self.all_candidates
+            .iter()
+            .filter(|c| match cat {
+                CategoryFilter::All => true,
+                CategoryFilter::OpenTabs => matches!(c.kind, ItemKind::OpenTab { .. }),
+                CategoryFilter::Antigravity => match &c.kind {
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::Antigravity
+                    }
+                    _ => false,
+                },
+                CategoryFilter::Claude => match &c.kind {
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::ClaudeCode
+                    }
+                    _ => false,
+                },
+                CategoryFilter::OpenCode => match &c.kind {
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::OpenCode
+                    }
+                    _ => false,
+                },
+            })
+            .count()
     }
 
     pub fn reload_candidates(&mut self) {
@@ -119,10 +215,11 @@ impl PickerState {
                 is_active,
                 ref conversation_id,
                 ref pane_path,
+                ref harness,
             } = tab.kind
             {
                 if let Some(ref cid) = conversation_id {
-                    open_convs.insert(cid.clone(), true);
+                    open_convs.insert(cid.clone(), (session.clone(), window_index));
                 }
                 let marker = if is_active { "▶ " } else { "  " };
                 let turn_icon = if window_name.contains('●') {
@@ -130,10 +227,17 @@ impl PickerState {
                 } else {
                     "  "
                 };
+                let h_icon = match harness {
+                    crate::core::AgentHarness::Antigravity => "󰚩 ",
+                    crate::core::AgentHarness::ClaudeCode => "󰊠 ",
+                    crate::core::AgentHarness::OpenCode => "󰘐 ",
+                    crate::core::AgentHarness::PlainTerminal => "> ",
+                    _ => "# ",
+                };
                 let label = match self.scope {
                     ScopeArg::Local => format!(
-                        "{}[Tab {}] {}{:<24} (open)",
-                        marker, window_index, turn_icon, window_name
+                        "{}[Tab {}] {}{}{:<22} (open)",
+                        marker, window_index, turn_icon, h_icon, window_name
                     ),
                     ScopeArg::Global => {
                         let clean_name = if let Some(stripped) = session.strip_prefix("agy-") {
@@ -150,16 +254,18 @@ impl PickerState {
                             session
                         };
                         format!(
-                            "{}[{}:{}] {}{:<20} (open)",
-                            marker, clean_name, window_index, turn_icon, window_name
+                            "{}[{}:{}] {}{}{:<18} (open)",
+                            marker, clean_name, window_index, turn_icon, h_icon, window_name
                         )
                     }
                 };
                 let match_text = format!(
-                    "{} {} {}",
+                    "{} {} {} {} {}",
                     session,
                     window_name,
-                    conversation_id.as_deref().unwrap_or("")
+                    conversation_id.as_deref().unwrap_or(""),
+                    harness.as_str(),
+                    h_icon,
                 );
                 candidates.push(PickerCandidate {
                     display_label: label,
@@ -168,38 +274,58 @@ impl PickerState {
                 });
             }
         }
+        self.open_convs = open_convs;
 
-        // 3. Historical conversations from SQLite
-        let historical = load_historical_conversations(self.scope, &self.project_name, 50);
+        // 3. Historical conversations from multi-harness history
+        let historical =
+            crate::core::harness::load_all_historical_sessions(self.scope, &self.project_name, 50);
         for hist in historical {
-            if let ItemKind::Historical {
-                ref conversation_id,
-                ref title,
-                ref relative_time,
-                ref project,
-                step_count: _,
-            } = hist.kind
-            {
-                // Skip if already open in a tab
-                if open_convs.contains_key(conversation_id) {
-                    continue;
+            let h_badge = match hist.harness {
+                crate::core::AgentHarness::Antigravity => "󰚩 agy",
+                crate::core::AgentHarness::ClaudeCode => "󰊠 claude",
+                crate::core::AgentHarness::OpenCode => "󰘐 opencode",
+                crate::core::AgentHarness::PlainTerminal => "term",
+                crate::core::AgentHarness::Codex => "codex",
+                crate::core::AgentHarness::Custom(ref c) => c.as_str(),
+            };
+
+            let is_already_open = self.open_convs.contains_key(&hist.conversation_id);
+            let open_tag = if is_already_open { " (open)" } else { "" };
+
+            let label = match self.scope {
+                ScopeArg::Local => format!(
+                    "   [{:<8}] {:<28} ({}){}",
+                    h_badge, hist.title, hist.timestamp_str, open_tag
+                ),
+                ScopeArg::Global => {
+                    format!(
+                        "   [{:<8}·{:<10}] {:<22} ({}){}",
+                        h_badge, hist.project, hist.title, hist.timestamp_str, open_tag
+                    )
                 }
-                let label = match self.scope {
-                    ScopeArg::Local => format!("   [Hist]       {:<30} ({})", title, relative_time),
-                    ScopeArg::Global => {
-                        format!("   [{:<10}] {:<30} ({})", project, title, relative_time)
-                    }
-                };
-                let match_text = format!(
-                    "{} {} {} {}",
-                    title, project, relative_time, conversation_id
-                );
-                candidates.push(PickerCandidate {
-                    display_label: label,
-                    match_text,
-                    kind: hist.kind,
-                });
-            }
+            };
+            let match_text = format!(
+                "{} {} {} {} {} {}",
+                hist.title,
+                hist.project,
+                hist.timestamp_str,
+                hist.conversation_id,
+                hist.harness.as_str(),
+                h_badge,
+            );
+            candidates.push(PickerCandidate {
+                display_label: label,
+                match_text,
+                kind: ItemKind::Historical {
+                    conversation_id: hist.conversation_id,
+                    title: hist.title,
+                    relative_time: hist.timestamp_str,
+                    project: hist.project,
+                    step_count: hist.step_count,
+                    harness: hist.harness,
+                    last_modified_epoch: hist.last_modified_epoch,
+                },
+            });
         }
 
         self.all_candidates = candidates;
@@ -207,16 +333,48 @@ impl PickerState {
     }
 
     pub fn filter(&mut self) {
+        let cat = self.category;
+        let category_matching_indices: Vec<usize> = self
+            .all_candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| match cat {
+                CategoryFilter::All => true,
+                CategoryFilter::OpenTabs => {
+                    matches!(c.kind, ItemKind::NewTab | ItemKind::OpenTab { .. })
+                }
+                CategoryFilter::Antigravity => match &c.kind {
+                    ItemKind::NewTab => true,
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::Antigravity
+                    }
+                },
+                CategoryFilter::Claude => match &c.kind {
+                    ItemKind::NewTab => true,
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::ClaudeCode
+                    }
+                },
+                CategoryFilter::OpenCode => match &c.kind {
+                    ItemKind::NewTab => true,
+                    ItemKind::OpenTab { harness, .. } | ItemKind::Historical { harness, .. } => {
+                        *harness == crate::core::AgentHarness::OpenCode
+                    }
+                },
+            })
+            .map(|(i, _)| i)
+            .collect();
+
         if self.query.trim().is_empty() {
-            self.filtered_indices = (0..self.all_candidates.len()).collect();
+            self.filtered_indices = category_matching_indices;
         } else {
             let mut matcher = Matcher::new(Config::DEFAULT);
             let mut query_buf = Vec::new();
             let needle = Utf32Str::new(&self.query, &mut query_buf);
 
             let mut scored = Vec::new();
-            for (idx, candidate) in self.all_candidates.iter().enumerate() {
-                // NewTab is always matched or kept at top if relevant
+            for &idx in &category_matching_indices {
+                let candidate = &self.all_candidates[idx];
                 let mut haystack_buf = Vec::new();
                 let haystack = Utf32Str::new(&candidate.match_text, &mut haystack_buf);
                 if let Some(score) = matcher.fuzzy_match(haystack, needle) {
@@ -275,20 +433,95 @@ pub enum PickerResult {
 }
 
 pub fn handle_key(key: KeyEvent, state: &mut PickerState) -> PickerResult {
+    // If collision prompt is active, intercept input
+    if let Some(col) = state.collision_prompt.clone() {
+        match key.code {
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Enter => {
+                state.collision_prompt = None;
+                return PickerResult::Select(PickerCandidate {
+                    display_label: format!("Switch to tab {}", col.target_window_index),
+                    match_text: String::new(),
+                    kind: ItemKind::OpenTab {
+                        session: col.target_session,
+                        window_index: col.target_window_index,
+                        window_name: String::new(),
+                        is_active: false,
+                        conversation_id: Some(col.conversation_id),
+                        pane_path: String::new(),
+                        harness: col.harness,
+                    },
+                });
+            }
+            KeyCode::Char('f') | KeyCode::Char('F') => {
+                state.collision_prompt = None;
+                return PickerResult::Select(PickerCandidate {
+                    display_label: format!("Fork conversation {}", col.conversation_id),
+                    match_text: String::new(),
+                    kind: ItemKind::Historical {
+                        conversation_id: col.conversation_id,
+                        title: String::new(),
+                        relative_time: String::new(),
+                        project: col.project,
+                        step_count: 0,
+                        harness: col.harness,
+                        last_modified_epoch: 0,
+                    },
+                });
+            }
+            KeyCode::Esc => {
+                state.collision_prompt = None;
+                return PickerResult::Continue;
+            }
+            _ => return PickerResult::Continue,
+        }
+    }
+
     match key.code {
         KeyCode::Esc => PickerResult::Cancel,
         KeyCode::Enter => {
             if let Some(candidate) = state.selected_candidate() {
+                if let ItemKind::Historical {
+                    ref conversation_id,
+                    ref project,
+                    ref harness,
+                    ..
+                } = candidate.kind
+                {
+                    if let Some(&(ref open_session, open_idx)) =
+                        state.open_convs.get(conversation_id)
+                    {
+                        state.collision_prompt = Some(CollisionState {
+                            target_session: open_session.clone(),
+                            target_window_index: open_idx,
+                            conversation_id: conversation_id.clone(),
+                            harness: harness.clone(),
+                            project: project.clone(),
+                        });
+                        return PickerResult::Continue;
+                    }
+                }
                 PickerResult::Select(candidate.clone())
             } else {
                 PickerResult::Cancel
             }
         }
         KeyCode::Tab => {
-            state.toggle_scope();
+            state.category = state.category.next();
+            state.filter();
             PickerResult::Continue
         }
-        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::BackTab => {
+            state.category = state.category.prev();
+            state.filter();
+            PickerResult::Continue
+        }
+        KeyCode::Char('g')
+        | KeyCode::Char('G')
+        | KeyCode::Char('l')
+        | KeyCode::Char('L')
+        | KeyCode::Char('a')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
             state.toggle_scope();
             PickerResult::Continue
         }
@@ -360,11 +593,38 @@ pub fn render(f: &mut Frame, area: Rect, state: &mut PickerState) {
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(3), // Categories bar (Tab / BackTab)
             Constraint::Length(3), // Search prompt input
             Constraint::Min(4),    // List of candidates
             Constraint::Length(1), // Shortcut hint footer
         ])
         .split(main_panes[0]);
+
+    // Categories tab bar
+    let mut cat_spans = Vec::new();
+    for cat in CategoryFilter::all() {
+        let is_active = *cat == state.category;
+        let count = state.category_count(*cat);
+        let label = format!("{} ({})", cat.label(), count);
+
+        if is_active {
+            cat_spans.push(Span::styled(
+                format!("[ {} ]", label),
+                Style::default()
+                    .fg(COLOR_GREEN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            cat_spans.push(Span::styled(
+                format!("  {}  ", label),
+                Style::default().fg(COLOR_MUTED),
+            ));
+        }
+        cat_spans.push(Span::raw(" "));
+    }
+    let cat_p =
+        Paragraph::new(Line::from(cat_spans)).block(styled_block("Categories (Tab)", false));
+    f.render_widget(cat_p, left_chunks[0]);
 
     // Search bar
     let scope_tag = match state.scope {
@@ -386,7 +646,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &mut PickerState) {
     ]))
     .block(search_block)
     .style(base_style());
-    f.render_widget(search_p, left_chunks[0]);
+    f.render_widget(search_p, left_chunks[1]);
 
     // Candidate List
     let items: Vec<ListItem> = state
@@ -450,19 +710,23 @@ pub fn render(f: &mut Frame, area: Rect, state: &mut PickerState) {
 
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected));
-    f.render_stateful_widget(list, left_chunks[1], &mut list_state);
+    f.render_stateful_widget(list, left_chunks[2], &mut list_state);
 
     // Left Footer
-    let left_footer = Paragraph::new(Line::from(vec![
-        Span::styled("Tab/Ctrl+A: ", Style::default().fg(COLOR_YELLOW)),
-        Span::styled("scope | ", muted_style()),
-        Span::styled("Enter: ", Style::default().fg(COLOR_GREEN)),
-        Span::styled("select | ", muted_style()),
-        Span::styled("Esc: ", Style::default().fg(COLOR_PINK)),
-        Span::styled("cancel", muted_style()),
-    ]))
+    let scope_tag_clean = match state.scope {
+        ScopeArg::Local => "Local",
+        ScopeArg::Global => "Global",
+    };
+    let footer_text = format!(
+        "[Scope: {} · Ctrl+G to toggle]  Tab: Category  Enter: Select  Esc: Cancel",
+        scope_tag_clean
+    );
+    let left_footer = Paragraph::new(Line::from(vec![Span::styled(
+        footer_text,
+        Style::default().fg(COLOR_MUTED),
+    )]))
     .style(base_style());
-    f.render_widget(left_footer, left_chunks[2]);
+    f.render_widget(left_footer, left_chunks[3]);
 
     // --- RIGHT PANE (55%) Live Rich Transcript Preview ---
     let right_block = styled_block("Transcript Preview", false);
@@ -479,6 +743,68 @@ pub fn render(f: &mut Frame, area: Rect, state: &mut PickerState) {
         )]))
         .alignment(Alignment::Center);
         f.render_widget(empty_p, preview_inner);
+    }
+
+    // Modal dialog for collision prompt if active
+    if let Some(ref col) = state.collision_prompt {
+        let dialog_width = 68.min(modal_area.width.saturating_sub(4));
+        let dialog_height = 8;
+        let dialog_x = modal_area.x + (modal_area.width.saturating_sub(dialog_width)) / 2;
+        let dialog_y = modal_area.y + (modal_area.height.saturating_sub(dialog_height)) / 2;
+        let dialog_area = Rect {
+            x: dialog_x,
+            y: dialog_y,
+            width: dialog_width,
+            height: dialog_height,
+        };
+
+        f.render_widget(Clear, dialog_area);
+        let block = styled_block("Session Already Open", true);
+
+        let lines = vec![
+            Line::raw(""),
+            Line::from(vec![
+                Span::styled(
+                    " This conversation is already open in tab ",
+                    Style::default().fg(COLOR_FG),
+                ),
+                Span::styled(
+                    format!("#{}", col.target_window_index),
+                    Style::default()
+                        .fg(COLOR_YELLOW)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" in session '{}'", col.target_session),
+                    Style::default().fg(COLOR_MUTED),
+                ),
+            ]),
+            Line::raw(""),
+            Line::from(vec![
+                Span::styled(
+                    "   [S] ",
+                    Style::default()
+                        .fg(COLOR_GREEN)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("Switch to tab   ", Style::default().fg(COLOR_FG)),
+                Span::styled(
+                    "[F] ",
+                    Style::default().fg(COLOR_CYAN).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("Fork new tab   ", Style::default().fg(COLOR_FG)),
+                Span::styled(
+                    "[Esc] ",
+                    Style::default().fg(COLOR_PINK).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("Cancel", Style::default().fg(COLOR_FG)),
+            ]),
+        ];
+        let p = Paragraph::new(lines)
+            .block(block)
+            .style(base_style())
+            .alignment(Alignment::Center);
+        f.render_widget(p, dialog_area);
     }
 }
 
@@ -540,6 +866,7 @@ fn render_preview_content(
             window_name,
             conversation_id,
             pane_path,
+            harness,
             ..
         } => {
             let mut lines = Vec::new();
@@ -563,6 +890,7 @@ fn render_preview_content(
             } else {
                 session
             };
+            lines.push(meta_line("Harness:", harness.as_str()));
             lines.push(meta_line("Project:", clean_proj));
             lines.push(meta_line("Session:", session));
             lines.push(meta_line("Window Index:", &window_index.to_string()));
@@ -570,8 +898,10 @@ fn render_preview_content(
 
             if let Some(ref cid) = conversation_id {
                 lines.push(meta_line("Conversation ID:", cid));
-                let t_info = state.get_or_load_transcript(cid);
-                append_transcript_lines(&mut lines, &t_info, cid);
+                if *harness == crate::core::AgentHarness::Antigravity {
+                    let t_info = state.get_or_load_transcript(cid);
+                    append_transcript_lines(&mut lines, &t_info, cid);
+                }
             } else {
                 lines.push(meta_line(
                     "Status:",
@@ -591,6 +921,8 @@ fn render_preview_content(
             relative_time,
             project,
             step_count,
+            harness,
+            ..
         } => {
             let mut lines = Vec::new();
             lines.push(Line::from(vec![Span::styled(
@@ -600,13 +932,16 @@ fn render_preview_content(
                     .add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::raw(""));
+            lines.push(meta_line("Harness:", harness.as_str()));
             lines.push(meta_line("Conversation ID:", conversation_id));
             lines.push(meta_line("Project:", project));
             lines.push(meta_line("Last Active:", relative_time));
             lines.push(meta_line("Step Count:", &format!("{} steps", step_count)));
 
-            let t_info = state.get_or_load_transcript(conversation_id);
-            append_transcript_lines(&mut lines, &t_info, conversation_id);
+            if *harness == crate::core::AgentHarness::Antigravity {
+                let t_info = state.get_or_load_transcript(conversation_id);
+                append_transcript_lines(&mut lines, &t_info, conversation_id);
+            }
 
             let p = Paragraph::new(lines)
                 .style(base_style())
@@ -743,18 +1078,13 @@ fn format_number(num: u64) -> String {
 }
 
 /// Query active tmux windows
-fn load_open_tabs(scope: ScopeArg, _project: &str) -> Vec<PickerCandidate> {
+fn load_open_tabs(scope: ScopeArg, project: &str) -> Vec<PickerCandidate> {
     let mut items = Vec::new();
-    let format = "#{session_name}\t#{window_index}\t#{window_name}\t#{@conversation_id}\t#{window_active}\t#{pane_current_path}";
+    let format = "#{session_name}\t#{window_index}\t#{window_name}\t#{@conversation_id}\t#{window_active}\t#{pane_current_path}\t#{?#{@harness},#{@harness},#{pane_current_command}}";
 
-    let output = match scope {
-        ScopeArg::Global => Command::new("tmux")
-            .args(["list-windows", "-a", "-F", format])
-            .output(),
-        ScopeArg::Local => Command::new("tmux")
-            .args(["list-windows", "-F", format])
-            .output(),
-    };
+    let output = Command::new("tmux")
+        .args(["list-windows", "-a", "-F", format])
+        .output();
 
     if let Ok(out) = output {
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -771,9 +1101,23 @@ fn load_open_tabs(scope: ScopeArg, _project: &str) -> Vec<PickerCandidate> {
                 };
                 let is_active = parts[4] == "1";
                 let pane_path = parts[5].to_string();
+                let harness_str = parts.get(6).copied().unwrap_or("").trim();
+                let harness = crate::core::AgentHarness::from_str_loose(harness_str);
 
-                if scope == ScopeArg::Global && !session.starts_with("agy-") {
-                    continue;
+                if scope == ScopeArg::Local {
+                    let matches_session = session == project
+                        || session == format!("agy-{}", project)
+                        || session == format!("claude-{}", project)
+                        || session == format!("opencode-{}", project)
+                        || session.ends_with(&format!("-{}", project));
+
+                    let matches_path = !project.is_empty()
+                        && (pane_path.ends_with(project)
+                            || pane_path.contains(&format!("/{}/", project)));
+
+                    if !matches_session && !matches_path {
+                        continue;
+                    }
                 }
 
                 items.push(PickerCandidate {
@@ -786,159 +1130,12 @@ fn load_open_tabs(scope: ScopeArg, _project: &str) -> Vec<PickerCandidate> {
                         is_active,
                         conversation_id: conv_id,
                         pane_path,
+                        harness,
                     },
                 });
             }
         }
     }
-    items
-}
-
-/// Query historical conversations from SQLite
-fn load_historical_conversations(
-    scope: ScopeArg,
-    project: &str,
-    limit: usize,
-) -> Vec<PickerCandidate> {
-    let mut items = Vec::new();
-    let db_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".gemini/antigravity-cli/conversation_summaries.db");
-
-    if !db_path.exists() {
-        return items;
-    }
-
-    if let Ok(conn) = Connection::open(&db_path) {
-        let hygiene =
-            crate::core::session::session_hygiene_conditions(&conn, "conversation_summaries");
-        let hygiene_and = if hygiene.is_empty() {
-            String::new()
-        } else {
-            format!(" AND {}", hygiene.join(" AND "))
-        };
-        let hygiene_where = if hygiene.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", hygiene.join(" AND "))
-        };
-
-        let step_count_col = if crate::core::session::table_has_column(
-            &conn,
-            "conversation_summaries",
-            "step_count",
-        ) {
-            "step_count"
-        } else {
-            "0 AS step_count"
-        };
-
-        let sql = match scope {
-            ScopeArg::Global => {
-                format!(
-                    "SELECT conversation_id,
-                            COALESCE(NULLIF(title, ''), NULLIF(preview, ''), 'Untitled'),
-                            strftime('%m-%d %H:%M', last_modified_time),
-                            COALESCE(NULLIF(project_id, ''), 'main'),
-                            {},
-                            workspace_uris
-                     FROM conversation_summaries
-                     {}
-                     ORDER BY last_modified_time DESC
-                     LIMIT ?;",
-                    step_count_col, hygiene_where
-                )
-            }
-            ScopeArg::Local => {
-                format!(
-                    "SELECT conversation_id,
-                            COALESCE(NULLIF(title, ''), NULLIF(preview, ''), 'Untitled'),
-                            strftime('%m-%d %H:%M', last_modified_time),
-                            COALESCE(NULLIF(project_id, ''), 'main'),
-                            {},
-                            workspace_uris
-                     FROM conversation_summaries
-                     WHERE (workspace_uris LIKE ? OR project_id = ? OR ? = ''){hygiene_and}
-                     ORDER BY last_modified_time DESC
-                     LIMIT ?;",
-                    step_count_col
-                )
-            }
-        };
-
-        if scope == ScopeArg::Global {
-            if let Ok(mut stmt) = conn.prepare(&sql) {
-                let rows = stmt.query_map([limit as i64], |row| {
-                    let conv_id: String = row.get(0)?;
-                    let title: String = row.get(1)?;
-                    let rel_time: String = row.get(2)?;
-                    let raw_proj: String = row.get(3)?;
-                    let steps: i64 = row.get(4)?;
-                    let uris: Option<String> = row.get(5).ok();
-                    let project = crate::core::session::resolve_project_name(
-                        Some(&raw_proj),
-                        uris.as_deref(),
-                        Some(project),
-                    );
-
-                    Ok(ItemKind::Historical {
-                        conversation_id: conv_id,
-                        title,
-                        relative_time: rel_time,
-                        project,
-                        step_count: steps,
-                    })
-                });
-                if let Ok(mapped) = rows {
-                    for r in mapped.flatten() {
-                        items.push(PickerCandidate {
-                            display_label: String::new(),
-                            match_text: String::new(),
-                            kind: r,
-                        });
-                    }
-                }
-            }
-        } else {
-            let filter = format!("%{}%", project);
-            if let Ok(mut stmt) = conn.prepare(&sql) {
-                let rows = stmt.query_map(
-                    rusqlite::params![filter, project, project, limit as i64],
-                    |row| {
-                        let conv_id: String = row.get(0)?;
-                        let title: String = row.get(1)?;
-                        let rel_time: String = row.get(2)?;
-                        let raw_proj: String = row.get(3)?;
-                        let steps: i64 = row.get(4)?;
-                        let uris: Option<String> = row.get(5).ok();
-                        let project = crate::core::session::resolve_project_name(
-                            Some(&raw_proj),
-                            uris.as_deref(),
-                            Some(project),
-                        );
-
-                        Ok(ItemKind::Historical {
-                            conversation_id: conv_id,
-                            title,
-                            relative_time: rel_time,
-                            project,
-                            step_count: steps,
-                        })
-                    },
-                );
-                if let Ok(mapped) = rows {
-                    for r in mapped.flatten() {
-                        items.push(PickerCandidate {
-                            display_label: String::new(),
-                            match_text: String::new(),
-                            kind: r,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
     items
 }
 
@@ -1101,6 +1298,7 @@ pub fn execute_selection(
         ItemKind::Historical {
             conversation_id,
             project: target_project,
+            harness,
             ..
         } => {
             let effective_project = if target_project.is_empty()
@@ -1117,6 +1315,46 @@ pub fn execute_selection(
             } else {
                 target_project.to_string()
             };
+
+            let run_cmd = match harness {
+                crate::core::AgentHarness::Antigravity => {
+                    format!(
+                        "ax run -H agy --project '{}' --conversation '{}'",
+                        effective_project, conversation_id
+                    )
+                }
+                crate::core::AgentHarness::ClaudeCode => {
+                    format!(
+                        "ax run -H claude --project '{}' -- --resume '{}'",
+                        effective_project, conversation_id
+                    )
+                }
+                crate::core::AgentHarness::OpenCode => {
+                    format!(
+                        "ax run -H opencode --project '{}' -- --session '{}'",
+                        effective_project, conversation_id
+                    )
+                }
+                crate::core::AgentHarness::PlainTerminal => {
+                    format!("ax run -H term --project '{}'", effective_project)
+                }
+                crate::core::AgentHarness::Codex => {
+                    format!("ax run -H codex --project '{}'", effective_project)
+                }
+                crate::core::AgentHarness::Custom(ref c) => {
+                    format!("ax run -H '{}' --project '{}'", c, effective_project)
+                }
+            };
+
+            let win_name = match harness {
+                crate::core::AgentHarness::Antigravity => "agy",
+                crate::core::AgentHarness::ClaudeCode => "claude",
+                crate::core::AgentHarness::OpenCode => "opencode",
+                crate::core::AgentHarness::PlainTerminal => "term",
+                crate::core::AgentHarness::Codex => "codex",
+                crate::core::AgentHarness::Custom(ref c) => c.as_str(),
+            };
+
             if std::env::var("TMUX").is_ok() {
                 let _ = Command::new("tmux")
                     .args([
@@ -1124,29 +1362,25 @@ pub fn execute_selection(
                         "-c",
                         &workdir.display().to_string(),
                         "-n",
-                        "conv",
-                        &format!(
-                            "ax run --project '{}' --conversation '{}'",
-                            effective_project, conversation_id
-                        ),
+                        win_name,
+                        &run_cmd,
                     ])
                     .status();
             } else {
                 let session_name = format!("agy-{}", effective_project);
                 let config = crate::config::Config::load().unwrap_or_default();
-                let mut run_cmd = format!(
-                    "ax run --project '{}' --conversation '{}'",
-                    effective_project, conversation_id
-                );
-                if config.general.remote_control {
-                    run_cmd.push_str(" --remote-control");
+                let mut full_cmd = run_cmd;
+                if config.general.remote_control
+                    && *harness == crate::core::AgentHarness::Antigravity
+                {
+                    full_cmd.push_str(" --remote-control");
                 }
                 crate::tmux::TmuxDriver::ensure_session(
                     &session_name,
                     workdir,
                     &config,
-                    Some(&run_cmd),
-                    Some("+ new"),
+                    Some(&full_cmd),
+                    Some(win_name),
                 )?;
                 crate::tmux::TmuxDriver::attach_session(&session_name)?;
             }

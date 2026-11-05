@@ -326,3 +326,134 @@ fn test_picker_modal_render_and_scope_toggle() {
     let rendered_text2: String = buffer2.content().iter().map(|c| c.symbol()).collect();
     assert!(rendered_text2.contains("[Global Search]"));
 }
+
+#[test]
+fn test_picker_category_cycling_and_filtering() {
+    use ax::core::AgentHarness;
+    use ax::ui::picker::{handle_key, CategoryFilter, ItemKind, PickerCandidate};
+
+    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
+    state.all_candidates = vec![
+        PickerCandidate {
+            display_label: "Tab 1".to_string(),
+            match_text: "Tab 1 agy".to_string(),
+            kind: ItemKind::OpenTab {
+                session: "agy-ax".to_string(),
+                window_index: 1,
+                window_name: "agy".to_string(),
+                is_active: true,
+                conversation_id: Some("conv-1".to_string()),
+                pane_path: "/tmp".to_string(),
+                harness: AgentHarness::Antigravity,
+            },
+        },
+        PickerCandidate {
+            display_label: "Tab 2".to_string(),
+            match_text: "Tab 2 claude".to_string(),
+            kind: ItemKind::OpenTab {
+                session: "claude-ax".to_string(),
+                window_index: 2,
+                window_name: "claude".to_string(),
+                is_active: false,
+                conversation_id: Some("conv-2".to_string()),
+                pane_path: "/tmp".to_string(),
+                harness: AgentHarness::ClaudeCode,
+            },
+        },
+        PickerCandidate {
+            display_label: "Hist 1".to_string(),
+            match_text: "Hist 1 opencode".to_string(),
+            kind: ItemKind::Historical {
+                conversation_id: "conv-3".to_string(),
+                title: "opencode task".to_string(),
+                relative_time: "5m ago".to_string(),
+                project: "ax".to_string(),
+                step_count: 3,
+                harness: AgentHarness::OpenCode,
+                last_modified_epoch: 1000,
+            },
+        },
+    ];
+
+    assert_eq!(state.category, CategoryFilter::All);
+    state.filter();
+    assert_eq!(state.filtered_indices.len(), 3);
+
+    // Press Tab -> OpenTabs
+    let tab_key = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+    handle_key(tab_key, &mut state);
+    assert_eq!(state.category, CategoryFilter::OpenTabs);
+    assert_eq!(state.filtered_indices.len(), 2);
+
+    // Press Tab -> Antigravity
+    handle_key(tab_key, &mut state);
+    assert_eq!(state.category, CategoryFilter::Antigravity);
+    assert_eq!(state.filtered_indices.len(), 1);
+
+    // Press Tab -> Claude
+    handle_key(tab_key, &mut state);
+    assert_eq!(state.category, CategoryFilter::Claude);
+    assert_eq!(state.filtered_indices.len(), 1);
+
+    // Press Tab -> OpenCode
+    handle_key(tab_key, &mut state);
+    assert_eq!(state.category, CategoryFilter::OpenCode);
+    assert_eq!(state.filtered_indices.len(), 1);
+
+    // Press BackTab -> Claude
+    let backtab_key = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
+    handle_key(backtab_key, &mut state);
+    assert_eq!(state.category, CategoryFilter::Claude);
+
+    // Press Ctrl+G -> Scope toggle
+    let ctrl_g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL);
+    handle_key(ctrl_g_key, &mut state);
+    assert_eq!(state.scope, ScopeArg::Global);
+}
+
+#[test]
+fn test_picker_collision_prompt_flow() {
+    use ax::core::AgentHarness;
+    use ax::ui::picker::{handle_key, ItemKind, PickerCandidate, PickerResult};
+
+    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
+    state
+        .open_convs
+        .insert("conv-active".to_string(), ("agy-ax".to_string(), 2));
+
+    state.all_candidates = vec![PickerCandidate {
+        display_label: "Hist Active".to_string(),
+        match_text: "Hist Active".to_string(),
+        kind: ItemKind::Historical {
+            conversation_id: "conv-active".to_string(),
+            title: "Active task".to_string(),
+            relative_time: "just now".to_string(),
+            project: "ax".to_string(),
+            step_count: 5,
+            harness: AgentHarness::Antigravity,
+            last_modified_epoch: 2000,
+        },
+    }];
+    state.filter();
+
+    // Select candidate with Enter -> triggers collision prompt
+    let enter_key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    let res = handle_key(enter_key, &mut state);
+    assert!(matches!(res, PickerResult::Continue));
+    assert!(state.collision_prompt.is_some());
+    let prompt = state.collision_prompt.as_ref().unwrap();
+    assert_eq!(prompt.target_window_index, 2);
+    assert_eq!(prompt.conversation_id, "conv-active");
+
+    // Press S -> switch to open tab
+    let s_key = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+    let switch_res = handle_key(s_key, &mut state);
+    assert!(state.collision_prompt.is_none());
+    match switch_res {
+        PickerResult::Select(candidate) => match candidate.kind {
+            ItemKind::OpenTab { window_index, .. } => assert_eq!(window_index, 2),
+            _ => panic!("Expected OpenTab selection"),
+        },
+        _ => panic!("Expected Select result"),
+    }
+}

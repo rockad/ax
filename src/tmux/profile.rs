@@ -217,8 +217,7 @@ impl TmuxProfile {
         lines.push("bind & if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
 
         lines.push(
-            "bind r command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
-                .to_string(),
+            "bind r command-prompt -I \"#W\" \"run-shell 'ax rename \\\"%%\\\"'\"".to_string(),
         );
         lines.push("bind R run-shell \"ax reload\"".to_string());
 
@@ -292,7 +291,9 @@ impl TmuxProfile {
             lines.push("bind й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
             lines.push("bind Й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }".to_string());
 
-            lines.push("bind к command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\"".to_string());
+            lines.push(
+                "bind к command-prompt -I \"#W\" \"run-shell 'ax rename \\\"%%\\\"'\"".to_string(),
+            );
             lines.push("bind К run-shell \"ax reload\"".to_string());
 
             lines.push("bind в detach-client".to_string());
@@ -357,7 +358,7 @@ impl TmuxProfile {
         // Mouse interactions for tabs
         lines.push("bind-key -T root MouseDown1Status if-shell -F '#{m/r:^close,#{mouse_status_range}}' { run-shell 'ax close-window \"#{mouse_status_range}\"' } { select-window -t = ; set-option -F @drag_window '#{window_id}' }".to_string());
         lines.push("bind-key -T root MouseDown2Status if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \"Close final tab #W? (y/n)\" \"kill-window -t =\" }".to_string());
-        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'rename-window -t = %%; set-option -w -t = @user_renamed 1'\" \"Reset Tab Title\" R \"set-option -w -t = @user_renamed 0; run-shell 'ax hook'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'ax palette fork'\" \"Join Tab as Split...\" J \"display-popup -E -w 75% -h 55% 'ax join'\" \"Unsplit Pane to Tab\" U \"run-shell 'tmux break-pane -d'\" \"Reload Session\" S \"run-shell 'ax palette -a reload'\"".to_string());
+        lines.push("bind-key -T root MouseDown3Status display-menu -t = -T \"#W Actions\" \"Close Tab\" x \"if-shell -F '#{>:#{session_windows},1}' { kill-window -t = } { confirm-before -p \\\"Close final tab #W? (y/n)\\\" \\\"kill-window -t =\\\" }\" \"Rename Tab\" r \"command-prompt -I '#W' 'run-shell \\\"ax rename \\\\\\\"%%\\\\\\\"\\\"'\" \"Reset Tab Title\" R \"set-option -w -t = @user_renamed 0; run-shell 'ax hook'\" \"Fork Tab\" f \"display-popup -E -w 65% -h 35% 'ax palette fork'\" \"Join Tab as Split...\" J \"display-popup -E -w 75% -h 55% 'ax join'\" \"Unsplit Pane to Tab\" U \"run-shell 'tmux break-pane -d'\" \"Reload Session\" S \"run-shell 'ax palette -a reload'\"".to_string());
 
         lines.join("\n") + "\n"
     }
@@ -477,9 +478,8 @@ mod tests {
         assert!(content.contains("bind X if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
         assert!(content.contains("bind q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
         assert!(content.contains("bind Q if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
-        assert!(content.contains(
-            "bind r command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
-        ));
+        assert!(content
+            .contains("bind r command-prompt -I \"#W\" \"run-shell 'ax rename \\\"%%\\\"'\""));
         assert!(content.contains("bind R run-shell \"ax reload\""));
         assert!(content.contains("bind h display-popup -E -w 75% -h 70% \"ax helper\""));
         assert!(content.contains("bind H display-popup -E -w 75% -h 70% \"ax helper\""));
@@ -521,9 +521,8 @@ mod tests {
         );
         assert!(content.contains("bind й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
         assert!(content.contains("bind Й if-shell -F '#{>:#{session_windows},1}' { kill-window } { confirm-before -p \"Close final tab #W? (y/n)\" kill-window }"));
-        assert!(content.contains(
-            "bind к command-prompt -I \"#W\" \"rename-window '%%'; set-option -w @user_renamed 1\""
-        ));
+        assert!(content
+            .contains("bind к command-prompt -I \"#W\" \"run-shell 'ax rename \\\"%%\\\"'\""));
         assert!(content.contains("bind К run-shell \"ax reload\""));
         assert!(content.contains("bind р display-popup -E -w 75% -h 70% \"ax helper\""));
         assert!(content.contains("bind Р display-popup -E -w 75% -h 70% \"ax helper\""));

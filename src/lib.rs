@@ -260,6 +260,10 @@ pub fn run() -> Result<()> {
             run_unsplit()?;
         }
 
+        Some(Commands::Rename { title, target }) => {
+            run_rename(title, target, &project)?;
+        }
+
         Some(Commands::Restore {
             project: restore_proj,
         }) => {
@@ -2069,6 +2073,101 @@ pub fn run_close_window(target: Option<&str>) -> Result<()> {
             .status();
         let _ = crate::core::TabRegistry::unbind_window_static(&target_win);
     }
+
+    Ok(())
+}
+
+/// Rename active tab and synchronize title to backing harness conversation
+pub fn run_rename(title: Option<String>, target: Option<String>, project: &str) -> Result<()> {
+    use std::io::IsTerminal;
+
+    let effective_title = match title {
+        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => {
+            if std::io::stdin().is_terminal() {
+                eprint!("Enter new tab title: ");
+                let mut line = String::new();
+                std::io::stdin().read_line(&mut line)?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    bail!("Title cannot be empty");
+                }
+                trimmed.to_string()
+            } else {
+                bail!("Title argument required when not in an interactive terminal");
+            }
+        }
+    };
+
+    let target_opt = target.as_deref();
+
+    // 1. Rename window in tmux and set @user_renamed 1
+    let mut rename_cmd = Command::new("tmux");
+    rename_cmd.arg("rename-window");
+    if let Some(t) = target_opt {
+        rename_cmd.args(["-t", t]);
+    }
+    rename_cmd.arg(&effective_title);
+    let status = rename_cmd.status()?;
+    if !status.success() {
+        bail!("Failed to rename tmux window");
+    }
+
+    let mut set_opt_cmd = Command::new("tmux");
+    set_opt_cmd.args(["set-option", "-w"]);
+    if let Some(t) = target_opt {
+        set_opt_cmd.args(["-t", t]);
+    }
+    set_opt_cmd.args(["@user_renamed", "1"]);
+    let _ = set_opt_cmd.status();
+
+    // 2. Query target window/pane info: window_id, pane_id, @conversation_id, @harness
+    let mut disp_cmd = Command::new("tmux");
+    disp_cmd.args(["display-message", "-p"]);
+    if let Some(t) = target_opt {
+        disp_cmd.args(["-t", t]);
+    }
+    disp_cmd.arg("#{window_id}|#{pane_id}|#{@conversation_id}|#{?#{@harness},#{@harness},#{pane_current_command}}");
+    let disp_out = disp_cmd
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+    let parts: Vec<&str> = disp_out.trim().split('|').collect();
+    let window_id = parts.first().copied().unwrap_or("").trim().to_string();
+    let _pane_id = parts.get(1).copied().unwrap_or("").trim().to_string();
+    let conv_id = parts.get(2).copied().unwrap_or("").trim().to_string();
+    let harness_str = parts.get(3).copied().unwrap_or("").trim().to_string();
+
+    let harness = crate::core::AgentHarness::from_str_loose(&harness_str);
+
+    // 3. Sync to backing harness conversation store if conversation_id is present
+    if !conv_id.is_empty() {
+        if let Err(e) =
+            crate::core::harness::sync_conversation_title(&harness, &conv_id, &effective_title)
+        {
+            eprintln!(
+                "Warning: failed to synchronize title to backing harness: {}",
+                e
+            );
+        }
+    }
+
+    // 4. Update TabRegistry if window_id is known
+    if !window_id.is_empty() {
+        if let Ok(mut reg) = crate::core::TabRegistry::open() {
+            let _ = reg.bind_full(
+                &window_id,
+                &conv_id,
+                Some(project),
+                Some(&effective_title),
+                Some(harness),
+            );
+        }
+    }
+
+    // 5. Persist layout snapshot
+    let _ = crate::core::persistence::save_session_layout(project);
 
     Ok(())
 }

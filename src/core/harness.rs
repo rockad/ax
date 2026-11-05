@@ -1,8 +1,12 @@
+use crate::cli::ScopeArg;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum AgentHarness {
@@ -459,6 +463,542 @@ impl HarnessRegistry {
     }
 }
 
+/// Synchronize conversation title to backing harness stores (Antigravity SQLite, Claude JSON, OpenCode SQLite)
+pub fn sync_conversation_title(
+    harness: &AgentHarness,
+    conversation_id: &str,
+    title: &str,
+) -> anyhow::Result<()> {
+    match harness {
+        AgentHarness::Antigravity => {
+            let db_path = dirs::home_dir()
+                .unwrap_or_default()
+                .join(".gemini/antigravity-cli/conversation_summaries.db");
+            if db_path.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    let _ = conn.execute(
+                        "UPDATE conversation_summaries SET title = ?1, last_modified_time = datetime('now') WHERE conversation_id = ?2;",
+                        rusqlite::params![title, conversation_id],
+                    );
+                    if crate::core::session::table_exists(&conn, "conversations") {
+                        let _ = conn.execute(
+                            "UPDATE conversations SET title = ?1, updated_at = strftime('%s','now') WHERE conversation_id = ?2;",
+                            rusqlite::params![title, conversation_id],
+                        );
+                    }
+                }
+            }
+        }
+        AgentHarness::ClaudeCode => {
+            let projects_dir = dirs::home_dir()
+                .unwrap_or_default()
+                .join(".claude/projects");
+            if projects_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let sess_dir = path.join(conversation_id);
+                            let jsonl_file = path.join(format!("{}.jsonl", conversation_id));
+                            if sess_dir.exists() || jsonl_file.exists() {
+                                let _ = std::fs::create_dir_all(&sess_dir);
+                                let custom_title_file = sess_dir.join("custom-title.json");
+                                let payload = serde_json::json!({ "customTitle": title });
+                                if let Ok(json_str) = serde_json::to_string(&payload) {
+                                    let _ = std::fs::write(&custom_title_file, json_str);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        AgentHarness::OpenCode => {
+            let db_path = dirs::home_dir()
+                .unwrap_or_default()
+                .join(".local/share/opencode/opencode.db");
+            if db_path.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    let _ = conn.execute(
+                        "UPDATE session_v2 SET title = ?1, time_updated = strftime('%s','now')*1000 WHERE id = ?2;",
+                        rusqlite::params![title, conversation_id],
+                    );
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoricalSession {
+    pub harness: AgentHarness,
+    pub conversation_id: String,
+    pub title: String,
+    pub project: String,
+    pub timestamp_str: String,
+    pub last_modified_epoch: i64,
+    pub step_count: i64,
+}
+
+pub trait HarnessHistoryProvider: Send + Sync {
+    fn load_conversations(
+        &self,
+        scope: ScopeArg,
+        project: &str,
+        limit: usize,
+    ) -> Vec<HistoricalSession>;
+}
+
+pub struct AntigravityHistory;
+
+impl HarnessHistoryProvider for AntigravityHistory {
+    fn load_conversations(
+        &self,
+        scope: ScopeArg,
+        project: &str,
+        limit: usize,
+    ) -> Vec<HistoricalSession> {
+        let mut items = Vec::new();
+        let db_path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".gemini/antigravity-cli/conversation_summaries.db");
+        if !db_path.exists() {
+            return items;
+        }
+
+        if let Ok(conn) = rusqlite::Connection::open_with_flags(
+            &db_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ) {
+            let hygiene =
+                crate::core::session::session_hygiene_conditions(&conn, "conversation_summaries");
+            let hygiene_and = if hygiene.is_empty() {
+                String::new()
+            } else {
+                format!(" AND {}", hygiene.join(" AND "))
+            };
+            let hygiene_where = if hygiene.is_empty() {
+                String::new()
+            } else {
+                format!("WHERE {}", hygiene.join(" AND "))
+            };
+
+            let step_count_col = if crate::core::session::table_has_column(
+                &conn,
+                "conversation_summaries",
+                "step_count",
+            ) {
+                "step_count"
+            } else {
+                "0 AS step_count"
+            };
+
+            let sql = match scope {
+                ScopeArg::Global => {
+                    format!(
+                        "SELECT conversation_id,
+                                COALESCE(NULLIF(title, ''), NULLIF(preview, ''), 'Untitled'),
+                                strftime('%m-%d %H:%M', last_modified_time),
+                                COALESCE(NULLIF(project_id, ''), 'main'),
+                                {},
+                                workspace_uris,
+                                strftime('%s', last_modified_time)
+                         FROM conversation_summaries
+                         {}
+                         ORDER BY last_modified_time DESC
+                         LIMIT ?;",
+                        step_count_col, hygiene_where
+                    )
+                }
+                ScopeArg::Local => {
+                    format!(
+                        "SELECT conversation_id,
+                                COALESCE(NULLIF(title, ''), NULLIF(preview, ''), 'Untitled'),
+                                strftime('%m-%d %H:%M', last_modified_time),
+                                COALESCE(NULLIF(project_id, ''), 'main'),
+                                {},
+                                workspace_uris,
+                                strftime('%s', last_modified_time)
+                         FROM conversation_summaries
+                         WHERE (workspace_uris LIKE ? OR project_id = ? OR ? = ''){hygiene_and}
+                         ORDER BY last_modified_time DESC
+                         LIMIT ?;",
+                        step_count_col
+                    )
+                }
+            };
+
+            if scope == ScopeArg::Global {
+                if let Ok(mut stmt) = conn.prepare(&sql) {
+                    let rows = stmt.query_map([limit as i64], |row| {
+                        let conv_id: String = row.get(0)?;
+                        let title: String = row.get(1)?;
+                        let rel_time: String = row.get(2)?;
+                        let raw_proj: String = row.get(3)?;
+                        let steps: i64 = row.get(4)?;
+                        let uris: Option<String> = row.get(5).ok();
+                        let epoch_str: Option<String> = row.get(6).ok();
+                        let epoch = epoch_str.and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+                        let proj = crate::core::session::resolve_project_name(
+                            Some(&raw_proj),
+                            uris.as_deref(),
+                            Some(project),
+                        );
+                        Ok(HistoricalSession {
+                            harness: AgentHarness::Antigravity,
+                            conversation_id: conv_id,
+                            title,
+                            project: proj,
+                            timestamp_str: rel_time,
+                            last_modified_epoch: epoch,
+                            step_count: steps,
+                        })
+                    });
+                    if let Ok(mapped) = rows {
+                        items.extend(mapped.flatten());
+                    }
+                }
+            } else {
+                let filter = format!("%{}%", project);
+                if let Ok(mut stmt) = conn.prepare(&sql) {
+                    let rows = stmt.query_map(
+                        rusqlite::params![filter, project, project, limit as i64],
+                        |row| {
+                            let conv_id: String = row.get(0)?;
+                            let title: String = row.get(1)?;
+                            let rel_time: String = row.get(2)?;
+                            let raw_proj: String = row.get(3)?;
+                            let steps: i64 = row.get(4)?;
+                            let uris: Option<String> = row.get(5).ok();
+                            let epoch_str: Option<String> = row.get(6).ok();
+                            let epoch = epoch_str.and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+                            let proj = crate::core::session::resolve_project_name(
+                                Some(&raw_proj),
+                                uris.as_deref(),
+                                Some(project),
+                            );
+                            Ok(HistoricalSession {
+                                harness: AgentHarness::Antigravity,
+                                conversation_id: conv_id,
+                                title,
+                                project: proj,
+                                timestamp_str: rel_time,
+                                last_modified_epoch: epoch,
+                                step_count: steps,
+                            })
+                        },
+                    );
+                    if let Ok(mapped) = rows {
+                        items.extend(mapped.flatten());
+                    }
+                }
+            }
+        }
+        items
+    }
+}
+
+static CLAUDE_TITLE_CACHE: LazyLock<Mutex<HashMap<PathBuf, (SystemTime, String)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn extract_claude_jsonl_title(path: &Path) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines().map_while(Result::ok).take(30) {
+        if line.contains("\"type\":\"user\"") {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if let Some(msg) = v.get("message") {
+                    if let Some(content) = msg.get("content") {
+                        if let Some(s) = content.as_str() {
+                            let first_line = s.lines().next().unwrap_or("").trim();
+                            if !first_line.is_empty() {
+                                return Some(first_line.chars().take(40).collect());
+                            }
+                        } else if let Some(arr) = content.as_array() {
+                            for block in arr {
+                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                    let first_line = text.lines().next().unwrap_or("").trim();
+                                    if !first_line.is_empty() {
+                                        return Some(first_line.chars().take(40).collect());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[derive(Default)]
+pub struct ClaudeHistory;
+
+impl HarnessHistoryProvider for ClaudeHistory {
+    fn load_conversations(
+        &self,
+        scope: ScopeArg,
+        project: &str,
+        limit: usize,
+    ) -> Vec<HistoricalSession> {
+        let mut items = Vec::new();
+        let projects_dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".claude/projects");
+        if !projects_dir.exists() {
+            return items;
+        }
+
+        let entries = match std::fs::read_dir(&projects_dir) {
+            Ok(e) => e,
+            Err(_) => return items,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            let clean_proj = dir_name.rsplit('-').next().unwrap_or(&dir_name).to_string();
+
+            if scope == ScopeArg::Local
+                && !clean_proj.eq_ignore_ascii_case(project)
+                && !dir_name.to_lowercase().contains(&project.to_lowercase())
+            {
+                continue;
+            }
+
+            if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                for sub in sub_entries.flatten() {
+                    let sub_path = sub.path();
+                    let name = sub.file_name().to_string_lossy().to_string();
+                    if name.ends_with(".jsonl") && name != "history.jsonl" {
+                        let conv_id = name.trim_end_matches(".jsonl").to_string();
+                        if conv_id.is_empty() {
+                            continue;
+                        }
+
+                        let mtime = sub
+                            .metadata()
+                            .and_then(|m| m.modified())
+                            .unwrap_or(SystemTime::UNIX_EPOCH);
+                        let epoch = mtime
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        let rel_time = crate::core::session::format_relative_time(epoch);
+
+                        // Check custom-title.json first
+                        let custom_title_file = path.join(&conv_id).join("custom-title.json");
+                        let title = if custom_title_file.exists() {
+                            if let Ok(content) = std::fs::read_to_string(&custom_title_file) {
+                                serde_json::from_str::<serde_json::Value>(&content)
+                                    .ok()
+                                    .and_then(|v| {
+                                        v.get("customTitle")
+                                            .and_then(|s| s.as_str())
+                                            .map(|s| s.to_string())
+                                    })
+                                    .unwrap_or_else(|| {
+                                        format!("Claude ({})", &conv_id[..conv_id.len().min(8)])
+                                    })
+                            } else {
+                                format!("Claude ({})", &conv_id[..conv_id.len().min(8)])
+                            }
+                        } else {
+                            let cached = {
+                                let lock = CLAUDE_TITLE_CACHE.lock().unwrap();
+                                lock.get(&sub_path).cloned()
+                            };
+
+                            if let Some((cached_mtime, cached_t)) = cached {
+                                if cached_mtime == mtime {
+                                    cached_t
+                                } else if let Some(extracted) =
+                                    extract_claude_jsonl_title(&sub_path)
+                                {
+                                    let mut lock = CLAUDE_TITLE_CACHE.lock().unwrap();
+                                    lock.insert(sub_path.clone(), (mtime, extracted.clone()));
+                                    extracted
+                                } else {
+                                    format!("Claude ({})", &conv_id[..conv_id.len().min(8)])
+                                }
+                            } else if let Some(extracted) = extract_claude_jsonl_title(&sub_path) {
+                                let mut lock = CLAUDE_TITLE_CACHE.lock().unwrap();
+                                lock.insert(sub_path.clone(), (mtime, extracted.clone()));
+                                extracted
+                            } else {
+                                format!("Claude ({})", &conv_id[..conv_id.len().min(8)])
+                            }
+                        };
+
+                        items.push(HistoricalSession {
+                            harness: AgentHarness::ClaudeCode,
+                            conversation_id: conv_id,
+                            title,
+                            project: clean_proj.clone(),
+                            timestamp_str: rel_time,
+                            last_modified_epoch: epoch,
+                            step_count: 0,
+                        });
+                    }
+                }
+            }
+        }
+
+        items.sort_by_key(|a| std::cmp::Reverse(a.last_modified_epoch));
+        items.truncate(limit);
+        items
+    }
+}
+
+pub struct OpenCodeHistory;
+
+impl HarnessHistoryProvider for OpenCodeHistory {
+    fn load_conversations(
+        &self,
+        scope: ScopeArg,
+        project: &str,
+        limit: usize,
+    ) -> Vec<HistoricalSession> {
+        let mut items = Vec::new();
+        let db_path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".local/share/opencode/opencode.db");
+        if !db_path.exists() {
+            return items;
+        }
+
+        if let Ok(conn) = rusqlite::Connection::open_with_flags(
+            &db_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ) {
+            if !crate::core::session::table_exists(&conn, "session_v2") {
+                return items;
+            }
+
+            let sql = match scope {
+                ScopeArg::Global => {
+                    "SELECT id,
+                            COALESCE(NULLIF(title, ''), 'Untitled Session'),
+                            directory,
+                            project_id,
+                            CAST(time_updated / 1000 AS INTEGER) AS epoch_sec
+                     FROM session_v2
+                     WHERE parent_id IS NULL
+                     ORDER BY time_updated DESC
+                     LIMIT ?1;"
+                }
+                ScopeArg::Local => {
+                    "SELECT id,
+                            COALESCE(NULLIF(title, ''), 'Untitled Session'),
+                            directory,
+                            project_id,
+                            CAST(time_updated / 1000 AS INTEGER) AS epoch_sec
+                     FROM session_v2
+                     WHERE parent_id IS NULL AND (directory LIKE ?1 OR project_id = ?2 OR ?3 = '')
+                     ORDER BY time_updated DESC
+                     LIMIT ?4;"
+                }
+            };
+
+            if scope == ScopeArg::Global {
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    let rows = stmt.query_map([limit as i64], |row| {
+                        let id: String = row.get(0)?;
+                        let title: String = row.get(1)?;
+                        let dir: String = row.get(2)?;
+                        let pid: String = row.get(3)?;
+                        let epoch: i64 = row.get(4)?;
+                        let proj = Path::new(&dir)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or(&pid)
+                            .to_string();
+                        let rel_time = crate::core::session::format_relative_time(epoch);
+                        Ok(HistoricalSession {
+                            harness: AgentHarness::OpenCode,
+                            conversation_id: id,
+                            title,
+                            project: proj,
+                            timestamp_str: rel_time,
+                            last_modified_epoch: epoch,
+                            step_count: 0,
+                        })
+                    });
+                    if let Ok(mapped) = rows {
+                        items.extend(mapped.flatten());
+                    }
+                }
+            } else {
+                let filter = format!("%{}%", project);
+                if let Ok(mut stmt) = conn.prepare(sql) {
+                    let rows = stmt.query_map(
+                        rusqlite::params![filter, project, project, limit as i64],
+                        |row| {
+                            let id: String = row.get(0)?;
+                            let title: String = row.get(1)?;
+                            let dir: String = row.get(2)?;
+                            let pid: String = row.get(3)?;
+                            let epoch: i64 = row.get(4)?;
+                            let proj = Path::new(&dir)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .filter(|n| !n.is_empty())
+                                .unwrap_or(&pid)
+                                .to_string();
+                            let rel_time = crate::core::session::format_relative_time(epoch);
+                            Ok(HistoricalSession {
+                                harness: AgentHarness::OpenCode,
+                                conversation_id: id,
+                                title,
+                                project: proj,
+                                timestamp_str: rel_time,
+                                last_modified_epoch: epoch,
+                                step_count: 0,
+                            })
+                        },
+                    );
+                    if let Ok(mapped) = rows {
+                        items.extend(mapped.flatten());
+                    }
+                }
+            }
+        }
+
+        items
+    }
+}
+
+/// Load and merge historical conversations across Antigravity, Claude Code, and OpenCode
+pub fn load_all_historical_sessions(
+    scope: ScopeArg,
+    project: &str,
+    limit: usize,
+) -> Vec<HistoricalSession> {
+    let mut all = Vec::new();
+
+    let agy = AntigravityHistory;
+    all.extend(agy.load_conversations(scope, project, limit));
+
+    let claude = ClaudeHistory;
+    all.extend(claude.load_conversations(scope, project, limit));
+
+    let opencode = OpenCodeHistory;
+    all.extend(opencode.load_conversations(scope, project, limit));
+
+    all.sort_by_key(|a| std::cmp::Reverse(a.last_modified_epoch));
+    all.truncate(limit);
+    all
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,5 +1130,18 @@ mod tests {
         };
         let cmd = driver.build_command(&ctx);
         assert_eq!(cmd.get_program(), "eval-cli");
+    }
+
+    #[test]
+    fn test_sync_conversation_title_plain_terminal_noop() {
+        let res = sync_conversation_title(&AgentHarness::PlainTerminal, "test-id", "New Title");
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_load_all_historical_sessions_structure() {
+        let sessions = load_all_historical_sessions(ScopeArg::Local, "nonexistent-proj-xyz", 10);
+        // Returns valid vec without panics
+        assert!(sessions.len() <= 10);
     }
 }

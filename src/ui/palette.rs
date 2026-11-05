@@ -663,14 +663,9 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
     let proj = project.unwrap_or("default");
     match action {
         PaletteAction::RenameTab => {
-            // Display tmux rename-window prompt and set user renamed flag
+            // Display tmux rename-window prompt and delegate to ax rename
             let _ = Command::new("tmux")
-                .args([
-                    "command-prompt",
-                    "-I",
-                    "#W",
-                    "rename-window '%%'; set-option -w @user_renamed 1",
-                ])
+                .args(["command-prompt", "-I", "#W", "run-shell 'ax rename \"%%\"'"])
                 .status();
         }
         PaletteAction::ResetTabTitle => {
