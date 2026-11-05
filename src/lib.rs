@@ -57,11 +57,27 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         None => {
-            handle_attach(&project, &dir, &session_name, &config, &[], remote_control)?;
+            handle_attach(
+                &project,
+                &dir,
+                &session_name,
+                &config,
+                &[],
+                remote_control,
+                cli.harness.as_deref(),
+            )?;
         }
         Some(Commands::Attach { args }) => {
             let rc = remote_control || args.contains(&"--remote-control".to_string());
-            handle_attach(&project, &dir, &session_name, &config, &args, rc)?;
+            handle_attach(
+                &project,
+                &dir,
+                &session_name,
+                &config,
+                &args,
+                rc,
+                cli.harness.as_deref(),
+            )?;
         }
 
         Some(Commands::Switch { scope }) => {
@@ -260,6 +276,7 @@ fn handle_attach(
     config: &Config,
     args: &[String],
     remote_control: bool,
+    harness: Option<&str>,
 ) -> Result<()> {
     use std::io::IsTerminal;
 
@@ -282,75 +299,19 @@ fn handle_attach(
         }
     }
 
+    let fallback_harness = if !config.general.default_harness.is_empty() {
+        config.general.default_harness.as_str()
+    } else {
+        "agy"
+    };
+    let effective_harness = harness.unwrap_or(fallback_harness);
+
     // Resolve active session: check explicit session_name first, then find by directory
     let active_session = if tmux::TmuxDriver::session_exists(session_name) {
         Some(session_name.to_string())
     } else {
         tmux::TmuxDriver::find_session_by_dir(dir)
     };
-
-    // If explicit arguments were passed, forward them directly
-    if !args.is_empty() {
-        if let Some(ref target_session) = active_session {
-            if std::env::var("TMUX").is_ok() {
-                if let Some(curr_session) = tmux::TmuxDriver::current_session() {
-                    if &curr_session == target_session {
-                        return run_runner(
-                            project,
-                            args.to_vec(),
-                            effective_remote_control,
-                            "agy",
-                            config,
-                        );
-                    }
-                }
-                return tmux::TmuxDriver::switch_client(target_session);
-            }
-            if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
-                return tmux::TmuxDriver::attach_session(target_session);
-            } else {
-                eprintln!(
-                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
-                    target_session, target_session
-                );
-                return Ok(());
-            }
-        }
-
-        // Session does not exist yet: create session_name
-        let mut run_cmd = format!("ax run --project '{}'", project);
-        if effective_remote_control {
-            run_cmd.push_str(" --remote-control");
-        }
-        let filtered_args: Vec<&String> = if !effective_remote_control {
-            args.iter().filter(|a| *a != "--remote-control").collect()
-        } else {
-            args.iter().collect()
-        };
-        if !filtered_args.is_empty() {
-            run_cmd.push(' ');
-            run_cmd.push_str(
-                &filtered_args
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            );
-        }
-        tmux::TmuxDriver::ensure_session(session_name, dir, config, Some(&run_cmd), Some("+ new"))?;
-
-        if std::env::var("TMUX").is_ok() {
-            return tmux::TmuxDriver::switch_client(session_name);
-        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
-            return tmux::TmuxDriver::attach_session(session_name);
-        } else {
-            eprintln!(
-                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
-                session_name, session_name
-            );
-            return Ok(());
-        }
-    }
 
     // If session already exists (by name or by directory), attach or switch directly
     if let Some(ref target_session) = active_session {
@@ -409,6 +370,123 @@ fn handle_attach(
             ])
             .status();
 
+        if let Some(req_harness) = harness {
+            // Explicit harness was specified (e.g. cli.harness.is_some())
+            let mut found_win_id = None;
+            if args.is_empty() {
+                if let Ok(output) = Command::new("tmux")
+                    .args([
+                        "list-windows",
+                        "-t",
+                        target_session,
+                        "-F",
+                        "#{window_id}:#{@harness}",
+                    ])
+                    .output()
+                {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        let parts: Vec<&str> = line.trim().splitn(2, ':').collect();
+                        if parts.len() == 2 {
+                            let win_id = parts[0];
+                            let win_harness = parts[1];
+                            if win_harness == req_harness
+                                || crate::core::AgentHarness::from_str_loose(win_harness).as_str()
+                                    == crate::core::AgentHarness::from_str_loose(req_harness)
+                                        .as_str()
+                            {
+                                found_win_id = Some(win_id.to_string());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref win_id) = found_win_id {
+                let _ = Command::new("tmux")
+                    .args(["select-window", "-t", win_id])
+                    .status();
+            } else {
+                let mut run_cmd = format!("ax run -H {} --project '{}'", req_harness, project);
+                if effective_remote_control {
+                    run_cmd.push_str(" --remote-control");
+                }
+                let filtered_args: Vec<&String> = if !effective_remote_control {
+                    args.iter().filter(|a| *a != "--remote-control").collect()
+                } else {
+                    args.iter().collect()
+                };
+                if !filtered_args.is_empty() {
+                    run_cmd.push(' ');
+                    run_cmd.push_str(
+                        &filtered_args
+                            .iter()
+                            .map(|s| {
+                                if s.contains(' ') || s.contains('"') || s.contains('\'') {
+                                    format!("\"{}\"", s.replace('"', "\\\""))
+                                } else {
+                                    s.to_string()
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    );
+                }
+                let tab_name = match crate::core::AgentHarness::from_str_loose(req_harness) {
+                    crate::core::AgentHarness::PlainTerminal => "term",
+                    _ => "+ new",
+                };
+                let _ = Command::new("tmux")
+                    .args(["new-window", "-t", target_session, "-n", tab_name, &run_cmd])
+                    .status();
+            }
+
+            if std::env::var("TMUX").is_ok() {
+                if let Some(curr_session) = tmux::TmuxDriver::current_session() {
+                    if &curr_session == target_session {
+                        return Ok(());
+                    }
+                }
+                return tmux::TmuxDriver::switch_client(target_session);
+            } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+                return tmux::TmuxDriver::attach_session(target_session);
+            } else {
+                eprintln!(
+                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                    target_session, target_session
+                );
+                return Ok(());
+            }
+        }
+
+        // No explicit harness passed: attach/switch directly as before
+        if !args.is_empty() {
+            if std::env::var("TMUX").is_ok() {
+                if let Some(curr_session) = tmux::TmuxDriver::current_session() {
+                    if &curr_session == target_session {
+                        return run_runner(
+                            project,
+                            args.to_vec(),
+                            effective_remote_control,
+                            effective_harness,
+                            config,
+                        );
+                    }
+                }
+                return tmux::TmuxDriver::switch_client(target_session);
+            }
+            if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+                return tmux::TmuxDriver::attach_session(target_session);
+            } else {
+                eprintln!(
+                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                    target_session, target_session
+                );
+                return Ok(());
+            }
+        }
+
         if std::env::var("TMUX").is_ok() {
             if let Some(curr_session) = tmux::TmuxDriver::current_session() {
                 if &curr_session == target_session {
@@ -417,7 +495,7 @@ fn handle_attach(
                         project,
                         vec!["-c".to_string()],
                         effective_remote_control,
-                        "agy",
+                        effective_harness,
                         config,
                     );
                 }
@@ -430,6 +508,85 @@ fn handle_attach(
                 "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                 target_session, target_session
             );
+            return Ok(());
+        }
+    }
+
+    // Session does not exist yet
+    if !args.is_empty() {
+        let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
+        if effective_remote_control {
+            run_cmd.push_str(" --remote-control");
+        }
+        let filtered_args: Vec<&String> = if !effective_remote_control {
+            args.iter().filter(|a| *a != "--remote-control").collect()
+        } else {
+            args.iter().collect()
+        };
+        if !filtered_args.is_empty() {
+            run_cmd.push(' ');
+            run_cmd.push_str(
+                &filtered_args
+                    .iter()
+                    .map(|s| {
+                        if s.contains(' ') || s.contains('"') || s.contains('\'') {
+                            format!("\"{}\"", s.replace('"', "\\\""))
+                        } else {
+                            s.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
+        let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
+            crate::core::AgentHarness::PlainTerminal => "term",
+            _ => "+ new",
+        };
+        tmux::TmuxDriver::ensure_session(
+            session_name,
+            dir,
+            config,
+            Some(&run_cmd),
+            Some(tab_name),
+        )?;
+
+        if std::env::var("TMUX").is_ok() {
+            return tmux::TmuxDriver::switch_client(session_name);
+        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+            return tmux::TmuxDriver::attach_session(session_name);
+        } else {
+            eprintln!(
+                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                session_name, session_name
+            );
+            return Ok(());
+        }
+    }
+
+    // Session does not exist yet and no args:
+    // If an explicit harness was requested, skip Ask and immediately create session
+    if harness.is_some() {
+        let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
+        if effective_remote_control {
+            run_cmd.push_str(" --remote-control");
+        }
+        let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
+            crate::core::AgentHarness::PlainTerminal => "term",
+            _ => "+ new",
+        };
+        tmux::TmuxDriver::ensure_session(
+            session_name,
+            dir,
+            config,
+            Some(&run_cmd),
+            Some(tab_name),
+        )?;
+        if std::env::var("TMUX").is_ok() {
+            return tmux::TmuxDriver::switch_client(session_name);
+        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+            return tmux::TmuxDriver::attach_session(session_name);
+        } else {
             return Ok(());
         }
     }
@@ -506,16 +663,20 @@ fn handle_attach(
 
     match startup_action {
         crate::config::StartupAction::New => {
-            let mut run_cmd = format!("ax run --project '{}'", project);
+            let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
+            let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
+                crate::core::AgentHarness::PlainTerminal => "term",
+                _ => "+ new",
+            };
             tmux::TmuxDriver::ensure_session(
                 session_name,
                 dir,
                 config,
                 Some(&run_cmd),
-                Some("+ new"),
+                Some(tab_name),
             )?;
             if std::env::var("TMUX").is_ok() {
                 tmux::TmuxDriver::switch_client(session_name)?;
@@ -536,20 +697,26 @@ fn handle_attach(
             };
 
             let mut run_cmd = if let Some(ref lid) = latest_id {
-                format!("ax run --project '{}' --conversation '{}'", project, lid)
+                format!(
+                    "ax run -H {} --project '{}' --conversation '{}'",
+                    effective_harness, project, lid
+                )
             } else {
-                format!("ax run --project '{}'", project)
+                format!("ax run -H {} --project '{}'", effective_harness, project)
             };
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
-
+            let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
+                crate::core::AgentHarness::PlainTerminal => "term",
+                _ => "+ new",
+            };
             tmux::TmuxDriver::ensure_session(
                 session_name,
                 dir,
                 config,
                 Some(&run_cmd),
-                Some("+ new"),
+                Some(tab_name),
             )?;
             if std::env::var("TMUX").is_ok() {
                 tmux::TmuxDriver::switch_client(session_name)?;

@@ -31,6 +31,10 @@ pub struct Cli {
     #[arg(long = "remote-control", global = true)]
     pub remote_control: bool,
 
+    /// Override agent harness (e.g. agy, claude, opencode, codex, term)
+    #[arg(short = 'H', long = "harness", global = true)]
+    pub harness: Option<String>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -187,11 +191,14 @@ mod tests {
             "--dir",
             "/tmp/test",
             "--direct",
+            "-H",
+            "claude",
         ])
         .expect("parsing succeeds");
         assert_eq!(cli.project.as_deref(), Some("my-proj"));
         assert_eq!(cli.dir, Some(PathBuf::from("/tmp/test")));
         assert!(cli.direct);
+        assert_eq!(cli.harness.as_deref(), Some("claude"));
     }
 
     #[test]

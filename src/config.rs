@@ -87,6 +87,8 @@ pub struct GeneralConfig {
     pub default_model: String,
     #[serde(default = "default_effort")]
     pub default_effort: String,
+    #[serde(default = "default_harness")]
+    pub default_harness: String,
     #[serde(default = "default_startup_action")]
     pub startup_action: StartupAction,
     #[serde(default)]
@@ -205,6 +207,9 @@ fn default_model() -> String {
 fn default_effort() -> String {
     "medium".to_string()
 }
+fn default_harness() -> String {
+    "agy".to_string()
+}
 fn default_startup_action() -> StartupAction {
     StartupAction::Ask
 }
@@ -230,6 +235,7 @@ impl Default for GeneralConfig {
             projects_dir: default_projects_dir(),
             default_model: default_model(),
             default_effort: default_effort(),
+            default_harness: default_harness(),
             startup_action: default_startup_action(),
             remote_control: false,
             single_remote_control_instance: true,
@@ -431,6 +437,7 @@ mod tests {
         assert_eq!(config.theme.preset, "default");
         assert!(!config.theme.rounded_pills);
         assert_eq!(config.theme.status_position, "top");
+        assert_eq!(config.general.default_harness, "agy");
         assert_eq!(config.keybindings.prefix, "C-Space");
         assert!(config.keybindings.bilingual_cyrillic);
         assert!(!config.tmux.isolated_socket);
