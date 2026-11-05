@@ -302,6 +302,10 @@ pub fn run() -> Result<()> {
             run_hook(running.as_deref(), start)?;
         }
 
+        Some(Commands::GitStatus { path }) => {
+            run_git_status(path)?;
+        }
+
         Some(Commands::Install) => {
             run_install()?;
         }
@@ -2434,6 +2438,92 @@ pub fn run_install() -> Result<()> {
     Ok(())
 }
 
+/// Parse git rev-list left-right count output into (ahead, behind)
+pub fn parse_rev_list_count(text: &str) -> (u64, u64) {
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let behind = parts[0].parse::<u64>().unwrap_or(0);
+        let ahead = parts[1].parse::<u64>().unwrap_or(0);
+        (ahead, behind)
+    } else {
+        (0, 0)
+    }
+}
+
+/// Query ahead/behind commit counts relative to upstream
+fn get_git_ahead_behind(dir: &Path) -> (u64, u64) {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(dir)
+        .args(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+        .output();
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            return parse_rev_list_count(&text);
+        }
+    }
+    (0, 0)
+}
+
+/// Resolve git status (branch and ahead/behind) for a directory and format it for tmux pane border
+pub fn format_git_status(dir: &Path) -> Option<String> {
+    if !dir.exists() {
+        return None;
+    }
+
+    let branch_output = Command::new("git")
+        .args(["-C"])
+        .arg(dir)
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()?;
+
+    let mut branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+    if branch.is_empty() {
+        let rev_output = Command::new("git")
+            .args(["-C"])
+            .arg(dir)
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .ok()?;
+        if !rev_output.status.success() {
+            return None;
+        }
+        branch = String::from_utf8_lossy(&rev_output.stdout)
+            .trim()
+            .to_string();
+        if branch.is_empty() {
+            return None;
+        }
+    }
+
+    let (ahead, behind) = get_git_ahead_behind(dir);
+
+    let mut formatted = format!("#[fg=colour180]{branch}#[default]");
+    if ahead > 0 {
+        formatted.push_str(&format!(" #[fg=colour80]↑{ahead}#[default]"));
+    }
+    if behind > 0 {
+        formatted.push_str(&format!(" #[fg=colour140]↓{behind}#[default]"));
+    }
+
+    Some(formatted)
+}
+
+/// Output git status to stdout for tmux pane border format
+pub fn run_git_status(path: Option<PathBuf>) -> Result<()> {
+    let dir =
+        path.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    if let Some(status) = format_git_status(&dir) {
+        print!("{}", status);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2574,5 +2664,32 @@ mod tests {
             r#"["file:///home/user/projects/repo-a"]"#,
             "/home/user/projects/repo-b"
         ));
+    }
+
+    #[test]
+    fn test_parse_rev_list_count() {
+        assert_eq!(parse_rev_list_count("0\t0"), (0, 0));
+        assert_eq!(parse_rev_list_count("0\t0\n"), (0, 0));
+        assert_eq!(parse_rev_list_count("2\t5"), (5, 2)); // ahead: 5, behind: 2
+        assert_eq!(parse_rev_list_count("0\t3"), (3, 0)); // ahead: 3, behind: 0
+        assert_eq!(parse_rev_list_count("4\t0"), (0, 4)); // ahead: 0, behind: 4
+        assert_eq!(parse_rev_list_count(""), (0, 0));
+        assert_eq!(parse_rev_list_count("invalid"), (0, 0));
+    }
+
+    #[test]
+    fn test_format_git_status_repo() {
+        let repo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let status = format_git_status(&repo_dir);
+        assert!(status.is_some());
+        let s = status.unwrap();
+        assert!(s.starts_with("#[fg=colour180]"));
+        assert!(s.contains("#[default]"));
+    }
+
+    #[test]
+    fn test_format_git_status_nonexistent() {
+        let nonexistent = PathBuf::from("/nonexistent/directory/path/12345");
+        assert!(format_git_status(&nonexistent).is_none());
     }
 }

@@ -165,6 +165,13 @@ pub enum Commands {
         target: Option<String>,
     },
 
+    /// Output git branch and ahead/behind status formatted for tmux pane border
+    #[command(alias = "git-branch", alias = "branch", alias = "git-info")]
+    GitStatus {
+        /// Optional repository path (defaults to current working directory)
+        path: Option<PathBuf>,
+    },
+
     /// Install or update ax lifecycle hook in Antigravity configuration
     Install,
 }
@@ -502,5 +509,41 @@ mod tests {
 
         let cli_unsplit = Cli::try_parse_from(["ax", "unsplit"]).expect("parsing succeeds");
         assert!(matches!(cli_unsplit.command, Some(Commands::Unsplit)));
+    }
+
+    #[test]
+    fn test_cli_git_status_subcommand() {
+        let cli_default = Cli::try_parse_from(["ax", "git-status"]).expect("parsing succeeds");
+        match cli_default.command {
+            Some(Commands::GitStatus { path }) => assert_eq!(path, None),
+            other => panic!("expected GitStatus, got {:?}", other),
+        }
+
+        let cli_path =
+            Cli::try_parse_from(["ax", "git-status", "/custom/path"]).expect("parsing succeeds");
+        match cli_path.command {
+            Some(Commands::GitStatus { path }) => {
+                assert_eq!(path, Some(PathBuf::from("/custom/path")))
+            }
+            other => panic!("expected GitStatus with path, got {:?}", other),
+        }
+
+        let cli_alias1 = Cli::try_parse_from(["ax", "branch"]).expect("parsing succeeds");
+        assert!(matches!(
+            cli_alias1.command,
+            Some(Commands::GitStatus { path: None })
+        ));
+
+        let cli_alias2 = Cli::try_parse_from(["ax", "git-branch"]).expect("parsing succeeds");
+        assert!(matches!(
+            cli_alias2.command,
+            Some(Commands::GitStatus { path: None })
+        ));
+
+        let cli_alias3 = Cli::try_parse_from(["ax", "git-info"]).expect("parsing succeeds");
+        assert!(matches!(
+            cli_alias3.command,
+            Some(Commands::GitStatus { path: None })
+        ));
     }
 }
