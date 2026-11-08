@@ -195,7 +195,17 @@ impl HarnessDriver for ClaudeCodeDriver {
 
     fn build_command(&self, ctx: &HarnessLaunchContext) -> Command {
         let mut cmd = Command::new("claude");
-        cmd.args(&ctx.args);
+        let mut args = ctx.args.clone();
+        let has_resume = args.iter().any(|a| a == "--resume" || a == "-r");
+        if !has_resume {
+            if let Some(ref cid) = ctx.conversation_id {
+                args.push("--resume".to_string());
+                args.push(cid.clone());
+            } else if ctx.continue_flag {
+                args.push("--resume".to_string());
+            }
+        }
+        cmd.args(&args);
         if let Some(ref dir) = ctx.workdir {
             cmd.current_dir(dir);
         }
@@ -1143,5 +1153,60 @@ mod tests {
         let sessions = load_all_historical_sessions(ScopeArg::Local, "nonexistent-proj-xyz", 10);
         // Returns valid vec without panics
         assert!(sessions.len() <= 10);
+    }
+
+    #[test]
+    fn test_claude_driver_build_command_resume() {
+        let driver = ClaudeCodeDriver;
+
+        // 1. With conversation_id
+        let ctx_cid = HarnessLaunchContext {
+            conversation_id: Some("conv-abc-123".to_string()),
+            ..Default::default()
+        };
+        let cmd = driver.build_command(&ctx_cid);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(args, vec!["--resume", "conv-abc-123"]);
+
+        // 2. With continue_flag
+        let ctx_cont = HarnessLaunchContext {
+            continue_flag: true,
+            ..Default::default()
+        };
+        let cmd = driver.build_command(&ctx_cont);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(args, vec!["--resume"]);
+
+        // 3. Already has --resume in args
+        let ctx_existing = HarnessLaunchContext {
+            conversation_id: Some("conv-abc-123".to_string()),
+            args: vec!["--resume".to_string(), "my-custom-id".to_string()],
+            ..Default::default()
+        };
+        let cmd = driver.build_command(&ctx_existing);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(args, vec!["--resume", "my-custom-id"]);
+
+        // 4. Already has -r in args
+        let ctx_short = HarnessLaunchContext {
+            continue_flag: true,
+            args: vec!["-r".to_string()],
+            ..Default::default()
+        };
+        let cmd = driver.build_command(&ctx_short);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(args, vec!["-r"]);
     }
 }

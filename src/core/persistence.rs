@@ -34,6 +34,14 @@ pub struct SessionSnapshot {
     pub windows: Vec<WindowSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveWindow {
+    pub index: usize,
+    pub name: String,
+    pub conversation_id: Option<String>,
+    pub harness: Option<String>,
+}
+
 /// Directory where session layout snapshots are stored (~/.config/ax/sessions)
 pub fn sessions_dir() -> PathBuf {
     dirs::config_dir()
@@ -174,13 +182,66 @@ pub fn save_session_layout(project: &str) -> Result<PathBuf> {
         windows,
     };
 
-    let dir = sessions_dir();
-    fs::create_dir_all(&dir)?;
     let file_path = session_snapshot_path(project);
-    let json = serde_json::to_string_pretty(&snapshot)?;
-    fs::write(&file_path, json)?;
+    write_session_snapshot(&file_path, &snapshot)?;
 
     Ok(file_path)
+}
+
+/// Guarded session snapshot writer with backup (.json.bak) and empty/default session overwrite protection.
+/// Returns Ok(true) if the file was written, Ok(false) if overwrite was skipped to preserve multi-window layout.
+pub fn write_session_snapshot(file_path: &Path, snapshot: &SessionSnapshot) -> Result<bool> {
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    if file_path.exists() {
+        if let Ok(existing_content) = fs::read_to_string(file_path) {
+            if let Ok(existing) = serde_json::from_str::<SessionSnapshot>(&existing_content) {
+                let _ = fs::copy(file_path, file_path.with_extension("json.bak"));
+                if existing.windows.len() > 1 && snapshot.windows.len() <= 1 {
+                    let is_unconfigured = snapshot.windows.is_empty()
+                        || snapshot.windows.iter().all(|w| {
+                            (w.name == "+ new" || w.name == "term") && w.conversation_id.is_none()
+                        });
+                    if is_unconfigured {
+                        eprintln!(
+                            "ax: Preserving existing multi-window snapshot for '{}' (skipping overwrite with empty/default window)",
+                            snapshot.project
+                        );
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+    }
+
+    let json = serde_json::to_string_pretty(snapshot)?;
+    fs::write(file_path, json)?;
+    Ok(true)
+}
+
+/// Identifies snapshot windows that are not present in `live_windows` (matching either by conversation_id or name).
+pub fn find_missing_windows<'a>(
+    snapshot_windows: &'a [WindowSnapshot],
+    live_windows: &[LiveWindow],
+) -> Vec<&'a WindowSnapshot> {
+    snapshot_windows
+        .iter()
+        .filter(|win| {
+            !live_windows.iter().any(|lw| {
+                if let (Some(scid), Some(lcid)) = (&win.conversation_id, &lw.conversation_id) {
+                    if scid == lcid {
+                        return true;
+                    }
+                }
+                if !win.name.is_empty() && win.name == lw.name {
+                    return true;
+                }
+                false
+            })
+        })
+        .collect()
 }
 
 /// Restore a previously saved session snapshot for `project`.
@@ -211,14 +272,6 @@ pub fn restore_session_layout(project: &str) -> Result<bool> {
         format!("agy-{}", project)
     };
 
-    // If session already exists in tmux, do not overwrite running session
-    if crate::tmux::TmuxDriver::session_exists(&s_name) {
-        return Ok(false);
-    }
-
-    let config = crate::config::Config::load().unwrap_or_default();
-
-    // Create session with the first window
     let first_win = &snapshot.windows[0];
     let first_pane_path = first_win
         .panes
@@ -226,6 +279,121 @@ pub fn restore_session_layout(project: &str) -> Result<bool> {
         .map(|p| p.path.clone())
         .unwrap_or_else(|| ".".to_string());
 
+    // If session already exists in tmux, perform resilient restore:
+    // Never overwrite, close, or restart active working windows.
+    if crate::tmux::TmuxDriver::session_exists(&s_name) {
+        let win_out = Command::new("tmux")
+            .args([
+                "list-windows",
+                "-t",
+                &s_name,
+                "-F",
+                "#{window_index}|#{window_name}|#{@conversation_id}|#{@harness}",
+            ])
+            .output();
+
+        let mut live_windows = Vec::new();
+        if let Ok(ref out) = win_out {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split('|').collect();
+                    if parts.len() >= 2 {
+                        let idx: usize = parts[0].trim().parse().unwrap_or(0);
+                        let name = parts[1].trim().to_string();
+                        let cid = parts
+                            .get(2)
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                        let harness = parts
+                            .get(3)
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                        live_windows.push(LiveWindow {
+                            index: idx,
+                            name,
+                            conversation_id: cid,
+                            harness,
+                        });
+                    }
+                }
+            }
+        }
+
+        let mut existing_indices: std::collections::HashSet<usize> =
+            live_windows.iter().map(|w| w.index).collect();
+
+        let is_empty_single_window = if live_windows.len() == 1 {
+            let w0 = &live_windows[0];
+            w0.conversation_id.is_none() && (w0.name == "+ new" || w0.name == "term")
+        } else {
+            false
+        };
+
+        if is_empty_single_window {
+            let w0 = &live_windows[0];
+            let win_target = format!("{}:{}", s_name, w0.index);
+
+            // Check if window 1 has an active non-shell process
+            let pane_cmd = Command::new("tmux")
+                .args(["display-message", "-p", "-t", &win_target, "#{pane_current_command}"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+
+            let is_idle_shell = pane_cmd.is_empty()
+                || matches!(pane_cmd.as_str(), "zsh" | "bash" | "sh" | "fish");
+
+            if is_idle_shell {
+                let cmd = build_window_command(project, first_win);
+                if cmd != "$SHELL" {
+                    let _ = Command::new("tmux")
+                        .args(["respawn-pane", "-k", "-t", &win_target, &cmd])
+                        .status();
+                }
+            }
+
+            apply_window_snapshot_options_target(&win_target, first_win);
+            restore_panes_and_layout_target(&win_target, first_win);
+
+            for win in &snapshot.windows[1..] {
+                create_and_restore_window(
+                    &s_name,
+                    project,
+                    win,
+                    &first_pane_path,
+                    &mut existing_indices,
+                );
+            }
+
+            let _ = Command::new("tmux")
+                .args(["select-window", "-t", &win_target])
+                .status();
+
+            return Ok(true);
+        } else {
+            // Multiple windows or non-empty window: recreate missing windows from snapshot
+            let missing = find_missing_windows(&snapshot.windows, &live_windows);
+            for win in missing {
+                create_and_restore_window(
+                    &s_name,
+                    project,
+                    win,
+                    &first_pane_path,
+                    &mut existing_indices,
+                );
+            }
+
+            return Ok(true);
+        }
+    }
+
+    // Session does not exist yet: create session with first window and restore all
+    let config = crate::config::Config::load().unwrap_or_default();
     let first_cmd = build_window_command(project, first_win);
 
     crate::tmux::TmuxDriver::ensure_session(
@@ -236,41 +404,22 @@ pub fn restore_session_layout(project: &str) -> Result<bool> {
         Some(&first_win.name),
     )?;
 
-    // Apply window options for first window
     apply_window_snapshot_options(&s_name, first_win);
-
-    // Restore splits for first window if any
     restore_panes_and_layout(&s_name, first_win);
 
-    // Create and restore remaining windows
+    let mut existing_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    existing_indices.insert(first_win.index);
+
     for win in &snapshot.windows[1..] {
-        let pane_path = win
-            .panes
-            .first()
-            .map(|p| p.path.clone())
-            .unwrap_or_else(|| first_pane_path.clone());
-
-        let cmd = build_window_command(project, win);
-        let win_target = format!("{}:{}", s_name, win.index);
-
-        let _ = Command::new("tmux")
-            .args([
-                "new-window",
-                "-t",
-                &win_target,
-                "-n",
-                &win.name,
-                "-c",
-                &pane_path,
-                &cmd,
-            ])
-            .status();
-
-        apply_window_snapshot_options(&s_name, win);
-        restore_panes_and_layout(&s_name, win);
+        create_and_restore_window(
+            &s_name,
+            project,
+            win,
+            &first_pane_path,
+            &mut existing_indices,
+        );
     }
 
-    // Select the first window
     let _ = Command::new("tmux")
         .args([
             "select-window",
@@ -280,6 +429,66 @@ pub fn restore_session_layout(project: &str) -> Result<bool> {
         .status();
 
     Ok(true)
+}
+
+fn create_and_restore_window(
+    session: &str,
+    project: &str,
+    win: &WindowSnapshot,
+    default_path: &str,
+    existing_indices: &mut std::collections::HashSet<usize>,
+) {
+    let pane_path = win
+        .panes
+        .first()
+        .map(|p| p.path.clone())
+        .unwrap_or_else(|| default_path.to_string());
+
+    let cmd = build_window_command(project, win);
+
+    let (target_arg, explicit_index) = if !existing_indices.contains(&win.index) {
+        (format!("{}:{}", session, win.index), Some(win.index))
+    } else {
+        (format!("{}:", session), None)
+    };
+
+    let mut tmux_cmd = Command::new("tmux");
+    tmux_cmd.args([
+        "new-window",
+        "-d",
+        "-t",
+        &target_arg,
+        "-n",
+        &win.name,
+        "-c",
+        &pane_path,
+        "-P",
+        "-F",
+        "#{window_index}",
+    ]);
+    if !cmd.is_empty() {
+        tmux_cmd.arg(&cmd);
+    }
+
+    let created_idx = if let Ok(out) = tmux_cmd.output() {
+        if out.status.success() {
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .or(explicit_index)
+                .unwrap_or(win.index)
+        } else {
+            explicit_index.unwrap_or(win.index)
+        }
+    } else {
+        explicit_index.unwrap_or(win.index)
+    };
+
+    existing_indices.insert(created_idx);
+    let target = format!("{}:{}", session, created_idx);
+    apply_window_snapshot_options_target(&target, win);
+    restore_panes_and_layout_target(&target, win);
 }
 
 fn build_window_command(project: &str, win: &WindowSnapshot) -> String {
@@ -302,32 +511,35 @@ fn build_window_command(project: &str, win: &WindowSnapshot) -> String {
     }
 }
 
-fn apply_window_snapshot_options(session: &str, win: &WindowSnapshot) {
-    let target = format!("{}:{}", session, win.index);
+pub fn apply_window_snapshot_options_target(target: &str, win: &WindowSnapshot) {
     if !win.name.is_empty() {
-        let _ = crate::tmux::TmuxDriver::rename_window(&target, &win.name);
+        let _ = crate::tmux::TmuxDriver::rename_window(target, &win.name);
     }
     if let Some(ref h) = win.harness {
-        let _ = crate::tmux::TmuxDriver::set_window_option(&target, "@harness", h);
+        let _ = crate::tmux::TmuxDriver::set_window_option(target, "@harness", h);
         let _ = Command::new("tmux")
-            .args(["set-option", "-p", "-t", &target, "@harness", h])
+            .args(["set-option", "-p", "-t", target, "@harness", h])
             .status();
     }
     if let Some(ref cid) = win.conversation_id {
-        let _ = crate::tmux::TmuxDriver::set_window_option(&target, "@conversation_id", cid);
-        let _ = crate::core::TabRegistry::bind_static(&target, cid);
+        let _ = crate::tmux::TmuxDriver::set_window_option(target, "@conversation_id", cid);
+        let _ = crate::core::TabRegistry::bind_static(target, cid);
     }
     if win.user_renamed {
-        let _ = crate::tmux::TmuxDriver::set_window_option(&target, "@user_renamed", "1");
+        let _ = crate::tmux::TmuxDriver::set_window_option(target, "@user_renamed", "1");
     }
 }
 
-fn restore_panes_and_layout(session: &str, win: &WindowSnapshot) {
+pub fn apply_window_snapshot_options(session: &str, win: &WindowSnapshot) {
     let target = format!("{}:{}", session, win.index);
+    apply_window_snapshot_options_target(&target, win);
+}
+
+pub fn restore_panes_and_layout_target(target: &str, win: &WindowSnapshot) {
     if win.panes.len() > 1 {
         for pane in &win.panes[1..] {
             let _ = Command::new("tmux")
-                .args(["split-window", "-t", &target, "-c", &pane.path])
+                .args(["split-window", "-t", target, "-c", &pane.path])
                 .status();
             if let Some(ref h) = pane.harness {
                 let pane_target = format!("{}.{}", target, pane.index);
@@ -347,9 +559,14 @@ fn restore_panes_and_layout(session: &str, win: &WindowSnapshot) {
     }
     if let Some(ref l) = win.layout {
         let _ = Command::new("tmux")
-            .args(["select-layout", "-t", &target, l])
+            .args(["select-layout", "-t", target, l])
             .status();
     }
+}
+
+pub fn restore_panes_and_layout(session: &str, win: &WindowSnapshot) {
+    let target = format!("{}:{}", session, win.index);
+    restore_panes_and_layout_target(&target, win);
 }
 
 #[cfg(test)]
@@ -420,5 +637,171 @@ mod tests {
     fn test_restore_nonexistent_returns_false() {
         let res = restore_session_layout("nonexistent-project-xyz-123").unwrap();
         assert!(!res);
+    }
+
+    #[test]
+    fn test_write_session_snapshot_backup_and_guard() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("my-proj.json");
+
+        let multi_snapshot = SessionSnapshot {
+            project: "my-proj".to_string(),
+            session_name: "agy-my-proj".to_string(),
+            timestamp: 1000,
+            windows: vec![
+                WindowSnapshot {
+                    index: 1,
+                    name: "+ new".to_string(),
+                    harness: Some("agy".to_string()),
+                    conversation_id: Some("conv-1".to_string()),
+                    user_renamed: false,
+                    layout: None,
+                    panes: vec![],
+                },
+                WindowSnapshot {
+                    index: 2,
+                    name: "ce-research".to_string(),
+                    harness: Some("claude".to_string()),
+                    conversation_id: Some("conv-2".to_string()),
+                    user_renamed: true,
+                    layout: None,
+                    panes: vec![],
+                },
+            ],
+        };
+
+        // 1. Initial write of multi-window layout
+        let res = write_session_snapshot(&file_path, &multi_snapshot).unwrap();
+        assert!(res);
+        assert!(file_path.exists());
+
+        // 2. Attempt to overwrite with single unconfigured window ("+ new" with no cid)
+        let unconf_snapshot = SessionSnapshot {
+            project: "my-proj".to_string(),
+            session_name: "agy-my-proj".to_string(),
+            timestamp: 2000,
+            windows: vec![WindowSnapshot {
+                index: 1,
+                name: "+ new".to_string(),
+                harness: Some("agy".to_string()),
+                conversation_id: None,
+                user_renamed: false,
+                layout: None,
+                panes: vec![],
+            }],
+        };
+
+        let res_guard = write_session_snapshot(&file_path, &unconf_snapshot).unwrap();
+        // Guarded: returns false and does NOT overwrite file_path
+        assert!(!res_guard);
+        // Backup file exists
+        let bak_path = file_path.with_extension("json.bak");
+        assert!(bak_path.exists());
+
+        // Verify file_path still has 2 windows
+        let content = fs::read_to_string(&file_path).unwrap();
+        let current: SessionSnapshot = serde_json::from_str(&content).unwrap();
+        assert_eq!(current.windows.len(), 2);
+
+        // 3. Overwrite with configured single window ("ce-research" with cid)
+        let conf_single_snapshot = SessionSnapshot {
+            project: "my-proj".to_string(),
+            session_name: "agy-my-proj".to_string(),
+            timestamp: 3000,
+            windows: vec![WindowSnapshot {
+                index: 1,
+                name: "ce-research".to_string(),
+                harness: Some("claude".to_string()),
+                conversation_id: Some("conv-2".to_string()),
+                user_renamed: true,
+                layout: None,
+                panes: vec![],
+            }],
+        };
+
+        let res_conf = write_session_snapshot(&file_path, &conf_single_snapshot).unwrap();
+        assert!(res_conf);
+        let content2 = fs::read_to_string(&file_path).unwrap();
+        let current2: SessionSnapshot = serde_json::from_str(&content2).unwrap();
+        assert_eq!(current2.windows.len(), 1);
+        assert_eq!(current2.windows[0].name, "ce-research");
+    }
+
+    #[test]
+    fn test_find_missing_windows() {
+        let snapshot_windows = vec![
+            WindowSnapshot {
+                index: 1,
+                name: "+ new".to_string(),
+                harness: Some("agy".to_string()),
+                conversation_id: Some("cid-1".to_string()),
+                user_renamed: false,
+                layout: None,
+                panes: vec![],
+            },
+            WindowSnapshot {
+                index: 2,
+                name: "ce-research".to_string(),
+                harness: Some("claude".to_string()),
+                conversation_id: Some("cid-2".to_string()),
+                user_renamed: true,
+                layout: None,
+                panes: vec![],
+            },
+            WindowSnapshot {
+                index: 3,
+                name: "sessionN".to_string(),
+                harness: Some("term".to_string()),
+                conversation_id: None,
+                user_renamed: false,
+                layout: None,
+                panes: vec![],
+            },
+        ];
+
+        // Case 1: Tab 2 (ce-research) is live, but tab 3 is missing, tab 1 is live
+        let live_windows = vec![
+            LiveWindow {
+                index: 1,
+                name: "different-name-1".to_string(),
+                conversation_id: Some("cid-1".to_string()), // matches by cid!
+                harness: Some("agy".to_string()),
+            },
+            LiveWindow {
+                index: 2,
+                name: "ce-research".to_string(), // matches by name and cid
+                conversation_id: Some("cid-2".to_string()),
+                harness: Some("claude".to_string()),
+            },
+        ];
+
+        let missing = find_missing_windows(&snapshot_windows, &live_windows);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].name, "sessionN");
+
+        // Case 2: All windows present
+        let live_all = vec![
+            LiveWindow {
+                index: 1,
+                name: "+ new".to_string(),
+                conversation_id: Some("cid-1".to_string()),
+                harness: Some("agy".to_string()),
+            },
+            LiveWindow {
+                index: 2,
+                name: "ce-research".to_string(),
+                conversation_id: Some("cid-2".to_string()),
+                harness: Some("claude".to_string()),
+            },
+            LiveWindow {
+                index: 3,
+                name: "sessionN".to_string(),
+                conversation_id: None,
+                harness: Some("term".to_string()),
+            },
+        ];
+
+        let missing_none = find_missing_windows(&snapshot_windows, &live_all);
+        assert!(missing_none.is_empty());
     }
 }

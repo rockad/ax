@@ -6,7 +6,7 @@ pub mod ui;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, SessionAction};
 use config::Config;
 use std::{
     fs,
@@ -204,6 +204,7 @@ pub fn run() -> Result<()> {
 
             if std::env::var("TMUX").is_ok() {
                 tmux::TmuxDriver::new_window(Some(&tab_name), Some(&run_args))?;
+                let _ = crate::core::save_session_layout(&project);
             } else {
                 if !tmux::TmuxDriver::session_exists(&session_name) {
                     tmux::TmuxDriver::ensure_session(
@@ -227,6 +228,7 @@ pub fn run() -> Result<()> {
                         ])
                         .status();
                 }
+                let _ = crate::core::save_session_layout(&project);
                 tmux::TmuxDriver::attach_session(&session_name)?;
             }
         }
@@ -268,28 +270,31 @@ pub fn run() -> Result<()> {
             project: restore_proj,
         }) => {
             let target_project = restore_proj.unwrap_or_else(|| project.clone());
-            match crate::core::restore_session_layout(&target_project) {
-                Ok(true) => {
-                    println!("Restored session layout for '{}'", target_project);
-                    let target_session = if target_project.starts_with("agy-") {
-                        target_project
-                    } else {
-                        format!("agy-{}", target_project)
-                    };
-                    if std::env::var("TMUX").is_ok() {
-                        tmux::TmuxDriver::switch_client(&target_session)?;
-                    } else {
-                        tmux::TmuxDriver::attach_session(&target_session)?;
+            execute_restore(&target_project)?;
+        }
+
+        Some(Commands::Session { action }) => {
+            match action {
+                None => {
+                    execute_restore(&project)?;
+                }
+                Some(SessionAction::Restore { project: restore_proj }) => {
+                    let target_project = restore_proj.unwrap_or_else(|| project.clone());
+                    execute_restore(&target_project)?;
+                }
+                Some(SessionAction::Save { project: save_proj }) => {
+                    let target_project = save_proj.unwrap_or_else(|| project.clone());
+                    match crate::core::save_session_layout(&target_project) {
+                        Ok(path) => {
+                            println!("Saved session snapshot to {}", path.display());
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to save session snapshot: {}", e);
+                        }
                     }
                 }
-                Ok(false) => {
-                    println!(
-                        "No saved session snapshot found for '{}' (or session already active)",
-                        target_project
-                    );
-                }
-                Err(e) => {
-                    eprintln!("Failed to restore session snapshot: {}", e);
+                Some(SessionAction::Ls) => {
+                    run_session_ls()?;
                 }
             }
         }
@@ -1607,6 +1612,75 @@ fn run_ls() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Restore session tabs and split layouts from saved snapshot for target project
+pub fn execute_restore(target_project: &str) -> Result<()> {
+    match crate::core::restore_session_layout(target_project) {
+        Ok(true) => {
+            println!("Restored session layout for '{}'", target_project);
+            let target_session = if target_project.starts_with("agy-") {
+                target_project.to_string()
+            } else {
+                format!("agy-{}", target_project)
+            };
+            if std::env::var("TMUX").is_ok() {
+                tmux::TmuxDriver::switch_client(&target_session)?;
+            } else {
+                tmux::TmuxDriver::attach_session(&target_session)?;
+            }
+        }
+        Ok(false) => {
+            println!(
+                "No saved session snapshot found for '{}' (or session already active)",
+                target_project
+            );
+        }
+        Err(e) => {
+            eprintln!("Failed to restore session snapshot: {}", e);
+        }
+    }
+    Ok(())
+}
+
+/// List available session layout snapshots saved on disk
+pub fn run_session_ls() -> Result<()> {
+    let dir = crate::core::sessions_dir();
+    if !dir.exists() {
+        println!("No saved session snapshots found.");
+        return Ok(());
+    }
+
+    let mut snapshots = Vec::new();
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(snap) = serde_json::from_str::<crate::core::SessionSnapshot>(&content) {
+                        snapshots.push(snap);
+                    }
+                }
+            }
+        }
+    }
+
+    if snapshots.is_empty() {
+        println!("No saved session snapshots found in {}", dir.display());
+    } else {
+        snapshots.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        println!("Saved session snapshots ({}):", dir.display());
+        for snap in snapshots {
+            let rel = crate::core::session::format_relative_time(snap.timestamp);
+            println!(
+                "  {} ({} windows, saved {})",
+                snap.project,
+                snap.windows.len(),
+                rel
+            );
+        }
+    }
     Ok(())
 }
 

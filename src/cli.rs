@@ -154,6 +154,12 @@ pub enum Commands {
         project: Option<String>,
     },
 
+    /// Manage and restore session snapshots (e.g. ax session restore)
+    Session {
+        #[command(subcommand)]
+        action: Option<SessionAction>,
+    },
+
     /// Rename active tab and synchronize title to backing harness conversation
     #[command(alias = "rename-tab")]
     Rename {
@@ -180,6 +186,22 @@ pub enum Commands {
 pub enum ScopeArg {
     Local,
     Global,
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum SessionAction {
+    /// Restore session tabs and split layouts from saved snapshot
+    Restore {
+        /// Project name (defaults to current project)
+        project: Option<String>,
+    },
+    /// Save snapshot of current session layout
+    Save {
+        /// Project name (defaults to current project)
+        project: Option<String>,
+    },
+    /// List saved session snapshots
+    Ls,
 }
 
 #[cfg(test)]
@@ -545,5 +567,58 @@ mod tests {
             cli_alias3.command,
             Some(Commands::GitStatus { path: None })
         ));
+    }
+
+    #[test]
+    fn test_cli_session_subcommand() {
+        let cli_bare = Cli::try_parse_from(["ax", "session"]).expect("parsing succeeds");
+        match cli_bare.command {
+            Some(Commands::Session { action }) => assert_eq!(action, None),
+            other => panic!("expected Session None, got {:?}", other),
+        }
+
+        let cli_restore_default =
+            Cli::try_parse_from(["ax", "session", "restore"]).expect("parsing succeeds");
+        match cli_restore_default.command {
+            Some(Commands::Session {
+                action: Some(SessionAction::Restore { project }),
+            }) => assert_eq!(project, None),
+            other => panic!("expected Session Restore default, got {:?}", other),
+        }
+
+        let cli_restore_proj =
+            Cli::try_parse_from(["ax", "session", "restore", "my-project"]).expect("parsing succeeds");
+        match cli_restore_proj.command {
+            Some(Commands::Session {
+                action: Some(SessionAction::Restore { project }),
+            }) => assert_eq!(project.as_deref(), Some("my-project")),
+            other => panic!("expected Session Restore project, got {:?}", other),
+        }
+
+        let cli_save_default =
+            Cli::try_parse_from(["ax", "session", "save"]).expect("parsing succeeds");
+        match cli_save_default.command {
+            Some(Commands::Session {
+                action: Some(SessionAction::Save { project }),
+            }) => assert_eq!(project, None),
+            other => panic!("expected Session Save default, got {:?}", other),
+        }
+
+        let cli_save_proj =
+            Cli::try_parse_from(["ax", "session", "save", "my-project"]).expect("parsing succeeds");
+        match cli_save_proj.command {
+            Some(Commands::Session {
+                action: Some(SessionAction::Save { project }),
+            }) => assert_eq!(project.as_deref(), Some("my-project")),
+            other => panic!("expected Session Save project, got {:?}", other),
+        }
+
+        let cli_ls = Cli::try_parse_from(["ax", "session", "ls"]).expect("parsing succeeds");
+        match cli_ls.command {
+            Some(Commands::Session {
+                action: Some(SessionAction::Ls),
+            }) => (),
+            other => panic!("expected Session Ls, got {:?}", other),
+        }
     }
 }
