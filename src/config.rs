@@ -9,6 +9,8 @@ pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
+    pub session: SessionConfig,
+    #[serde(default)]
     pub theme: ThemeConfig,
     #[serde(default)]
     pub keybindings: KeybindingsConfig,
@@ -18,6 +20,66 @@ pub struct Config {
     pub tabs: Option<TabsConfig>,
     #[serde(default)]
     pub harnesses: HashMap<String, CustomHarnessConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionConfig {
+    #[serde(default = "default_restore_mode")]
+    pub restore_mode: SessionRestoreMode,
+    #[serde(default = "default_max_history")]
+    pub max_history: usize,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            restore_mode: default_restore_mode(),
+            max_history: default_max_history(),
+        }
+    }
+}
+
+fn default_restore_mode() -> SessionRestoreMode {
+    SessionRestoreMode::Ask
+}
+
+fn default_max_history() -> usize {
+    50
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionRestoreMode {
+    Restore,
+    Fresh,
+    #[default]
+    Ask,
+}
+
+impl std::fmt::Display for SessionRestoreMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Restore => write!(f, "restore"),
+            Self::Fresh => write!(f, "fresh"),
+            Self::Ask => write!(f, "ask"),
+        }
+    }
+}
+
+impl std::str::FromStr for SessionRestoreMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().replace('-', "_").as_str() {
+            "restore" | "prev" | "previous" => Ok(Self::Restore),
+            "fresh" | "new" => Ok(Self::Fresh),
+            "ask" | "prompt" => Ok(Self::Ask),
+            other => anyhow::bail!(
+                "Unknown session restore mode: '{}'. Valid options: restore (or prev), fresh, ask",
+                other
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -669,5 +731,45 @@ ANTHROPIC_API_KEY = "test-key"
             aider.env.get("ANTHROPIC_API_KEY").map(String::as_str),
             Some("test-key")
         );
+    }
+
+    #[test]
+    fn test_session_config_defaults() {
+        let session = SessionConfig::default();
+        assert_eq!(session.restore_mode, SessionRestoreMode::Ask);
+        assert_eq!(session.max_history, 50);
+
+        let default_config = Config::default();
+        assert_eq!(default_config.session.restore_mode, SessionRestoreMode::Ask);
+        assert_eq!(default_config.session.max_history, 50);
+    }
+
+    #[test]
+    fn test_session_restore_mode_display_and_from_str() {
+        assert_eq!(SessionRestoreMode::Restore.to_string(), "restore");
+        assert_eq!(SessionRestoreMode::Fresh.to_string(), "fresh");
+        assert_eq!(SessionRestoreMode::Ask.to_string(), "ask");
+
+        assert_eq!("restore".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
+        assert_eq!("prev".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
+        assert_eq!("previous".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
+        assert_eq!("fresh".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Fresh);
+        assert_eq!("new".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Fresh);
+        assert_eq!("ask".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Ask);
+        assert_eq!("prompt".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Ask);
+
+        assert!("invalid-mode".parse::<SessionRestoreMode>().is_err());
+    }
+
+    #[test]
+    fn test_config_deserialize_session_table() {
+        let toml_str = r#"
+[session]
+restore_mode = "restore"
+max_history = 20
+"#;
+        let config: Config = toml::from_str(toml_str).expect("session toml parses");
+        assert_eq!(config.session.restore_mode, SessionRestoreMode::Restore);
+        assert_eq!(config.session.max_history, 20);
     }
 }

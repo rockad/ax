@@ -46,6 +46,7 @@ pub enum PaletteAction {
     JoinTab,
     UnsplitPane,
     RestoreSession,
+    SessionHistory,
 }
 
 #[derive(Debug, Clone)]
@@ -245,6 +246,12 @@ impl PaletteItem {
                 shortcut: "ax restore",
                 mnemonic: None,
             },
+            PaletteItem {
+                action: PaletteAction::SessionHistory,
+                title: "Browse Session History & Snapshots",
+                shortcut: "ax session history",
+                mnemonic: None,
+            },
         ]
     }
 }
@@ -367,7 +374,7 @@ impl PaletteState {
                     PaletteAction::CopyMode => {
                         "copy".contains(&q)
                             || "scroll".contains(&q)
-                            || "history".contains(&q)
+                            || "scrollback".contains(&q)
                             || q == "["
                             || q == "х"
                     }
@@ -429,6 +436,11 @@ impl PaletteState {
                             || "layout".contains(&q)
                             || "recover".contains(&q)
                             || "snapshot".contains(&q)
+                    }
+                    PaletteAction::SessionHistory => {
+                        "history".contains(&q)
+                            || "snapshots".contains(&q)
+                            || "session history".contains(&q)
                     }
                     _ => false,
                 }
@@ -1012,6 +1024,11 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     .status();
             }
         },
+        PaletteAction::SessionHistory => {
+            let _ = Command::new("tmux")
+                .args(["display-popup", "-E", "-w", "85%", "-h", "65%", "ax session history"])
+                .status();
+        }
     }
     Ok(())
 }

@@ -7,8 +7,11 @@ pub mod transcript;
 
 pub use harness::AgentHarness;
 pub use persistence::{
-    find_missing_windows, restore_session_layout, save_session_layout, session_snapshot_path,
-    sessions_dir, write_session_snapshot, LiveWindow, PaneSnapshot, SessionSnapshot, WindowSnapshot,
+    delete_session_history_entry, find_missing_windows, list_session_history,
+    prune_session_history, restore_session_from_history, restore_session_layout,
+    restore_session_snapshot, save_named_session_layout, save_session_layout, session_history_dir,
+    session_snapshot_path, sessions_dir, write_session_snapshot, LiveWindow, PaneSnapshot,
+    SessionSnapshot, WindowSnapshot,
 };
 pub use project::{ProjectItem, ProjectScanner};
 pub use session::{ConversationItem, SessionDb};

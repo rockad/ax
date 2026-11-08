@@ -80,7 +80,7 @@ fn test_palette_modal_render_and_fuzzy_filter() {
     let mut terminal = Terminal::new(backend).unwrap();
     let mut state = PaletteState::new();
 
-    assert_eq!(state.items.len(), 31);
+    assert_eq!(state.items.len(), 32);
 
     terminal
         .draw(|f| palette::render(f, f.area(), &state))
@@ -112,6 +112,16 @@ fn test_palette_modal_render_and_fuzzy_filter() {
         );
     }
     assert_eq!(state.selected_action(), Some(PaletteAction::RestoreSession));
+
+    // Test query for "history" finds SessionHistory
+    state.query.clear();
+    for c in "history".chars() {
+        palette::handle_key(
+            KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE),
+            &mut state,
+        );
+    }
+    assert_eq!(state.selected_action(), Some(PaletteAction::SessionHistory));
 
     // Test query for "reload" / "sync" finds ReloadActiveSession
     state.query.clear();

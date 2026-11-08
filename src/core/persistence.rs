@@ -31,6 +31,8 @@ pub struct SessionSnapshot {
     pub project: String,
     pub session_name: String,
     pub timestamp: i64,
+    #[serde(default)]
+    pub name: Option<String>,
     pub windows: Vec<WindowSnapshot>,
 }
 
@@ -49,13 +51,29 @@ pub fn sessions_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".config/ax/sessions"))
 }
 
+/// Directory where session layout history snapshots are stored (~/.config/ax/sessions/history/<project>)
+pub fn session_history_dir(project: &str) -> PathBuf {
+    sessions_dir().join("history").join(project)
+}
+
 /// Filepath for a given project's session snapshot (~/.config/ax/sessions/<project>.json)
 pub fn session_snapshot_path(project: &str) -> PathBuf {
     sessions_dir().join(format!("{}.json", project))
 }
 
+fn sanitize_snapshot_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}
+
 /// Save a snapshot of the active tmux session layout for `project`
 pub fn save_session_layout(project: &str) -> Result<PathBuf> {
+    save_named_session_layout(project, None)
+}
+
+/// Save a snapshot of the active tmux session layout for `project` with an optional custom name/label
+pub fn save_named_session_layout(project: &str, name: Option<&str>) -> Result<PathBuf> {
     if project.is_empty() {
         anyhow::bail!("Cannot save session snapshot for empty project");
     }
@@ -175,17 +193,138 @@ pub fn save_session_layout(project: &str) -> Result<PathBuf> {
         anyhow::bail!("No windows found to snapshot for session '{}'", s_name);
     }
 
+    let timestamp = chrono::Utc::now().timestamp();
     let snapshot = SessionSnapshot {
         project: project.to_string(),
         session_name: s_name,
-        timestamp: chrono::Utc::now().timestamp(),
+        timestamp,
+        name: name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         windows,
     };
 
     let file_path = session_snapshot_path(project);
-    write_session_snapshot(&file_path, &snapshot)?;
+    let wrote_canonical = write_session_snapshot(&file_path, &snapshot)?;
+
+    if wrote_canonical {
+        let hist_dir = session_history_dir(project);
+        let _ = fs::create_dir_all(&hist_dir);
+        let filename = match snapshot.name.as_deref() {
+            Some(n) if !n.is_empty() => format!("{}_{}.json", timestamp, sanitize_snapshot_name(n)),
+            _ => format!("{}.json", timestamp),
+        };
+        let hist_file = hist_dir.join(filename);
+        if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
+            let _ = fs::write(&hist_file, json);
+        }
+
+        let config = crate::config::Config::load().unwrap_or_default();
+        let _ = prune_session_history(project, config.session.max_history);
+    }
 
     Ok(file_path)
+}
+
+/// Prune history entries for `project` keeping the most recent `max_history` entries
+pub fn prune_session_history(project: &str, max_history: usize) -> Result<()> {
+    if max_history == 0 {
+        return Ok(());
+    }
+
+    let hist_dir = session_history_dir(project);
+    if !hist_dir.exists() {
+        return Ok(());
+    }
+
+    let mut entries = Vec::new();
+    if let Ok(rd) = fs::read_dir(&hist_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                let ts = p
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .and_then(|s| s.split('_').next())
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .unwrap_or(0);
+                entries.push((ts, p));
+            }
+        }
+    }
+
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+
+    if entries.len() > max_history {
+        for (_, path) in &entries[max_history..] {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    Ok(())
+}
+
+/// List all historical snapshots for `project` sorted newest first
+pub fn list_session_history(project: &str) -> Result<Vec<SessionSnapshot>> {
+    let hist_dir = session_history_dir(project);
+    let mut snapshots = Vec::new();
+
+    if hist_dir.exists() {
+        if let Ok(rd) = fs::read_dir(&hist_dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                    if let Ok(content) = fs::read_to_string(&p) {
+                        if let Ok(snap) = serde_json::from_str::<SessionSnapshot>(&content) {
+                            snapshots.push(snap);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Include canonical snapshot if not already in history
+    let canonical_path = session_snapshot_path(project);
+    if canonical_path.exists() {
+        if let Ok(content) = fs::read_to_string(&canonical_path) {
+            if let Ok(snap) = serde_json::from_str::<SessionSnapshot>(&content) {
+                if !snapshots.iter().any(|s| s.timestamp == snap.timestamp) {
+                    snapshots.push(snap);
+                }
+            }
+        }
+    }
+
+    snapshots.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    Ok(snapshots)
+}
+
+/// Delete a history entry matching `timestamp` for `project`
+pub fn delete_session_history_entry(project: &str, timestamp: i64) -> Result<()> {
+    let hist_dir = session_history_dir(project);
+    if !hist_dir.exists() {
+        return Ok(());
+    }
+
+    if let Ok(rd) = fs::read_dir(&hist_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                let file_ts = stem.split('_').next().and_then(|s| s.parse::<i64>().ok());
+                if file_ts == Some(timestamp) {
+                    let _ = fs::remove_file(&p);
+                } else if let Ok(content) = fs::read_to_string(&p) {
+                    if let Ok(snap) = serde_json::from_str::<SessionSnapshot>(&content) {
+                        if snap.timestamp == timestamp {
+                            let _ = fs::remove_file(&p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Guarded session snapshot writer with backup (.json.bak) and empty/default session overwrite protection.
@@ -262,6 +401,33 @@ pub fn restore_session_layout(project: &str) -> Result<bool> {
         Err(_) => return Ok(false),
     };
 
+    restore_session_snapshot(project, &snapshot)
+}
+
+/// Restore a session snapshot from history matching a timestamp or custom name.
+/// Returns Ok(true) if a matching snapshot was found and restored.
+pub fn restore_session_from_history(project: &str, identifier: &str) -> Result<bool> {
+    let snapshots = list_session_history(project)?;
+    let trimmed = identifier.trim();
+
+    let found = snapshots.into_iter().find(|s| {
+        s.timestamp.to_string() == trimmed
+            || s.name.as_deref().map(|n| n.eq_ignore_ascii_case(trimmed)).unwrap_or(false)
+            || trimmed.is_empty()
+    });
+
+    if let Some(snap) = found {
+        let file_path = session_snapshot_path(project);
+        let _ = write_session_snapshot(&file_path, &snap);
+        restore_session_snapshot(project, &snap)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Restore windows and layouts from an explicit SessionSnapshot into tmux for `project`.
+/// Returns Ok(true) on successful restoration.
+pub fn restore_session_snapshot(project: &str, snapshot: &SessionSnapshot) -> Result<bool> {
     if snapshot.windows.is_empty() {
         return Ok(false);
     }
@@ -579,6 +745,7 @@ mod tests {
             project: "test-proj".to_string(),
             session_name: "agy-test-proj".to_string(),
             timestamp: 1234567890,
+            name: None,
             windows: vec![
                 WindowSnapshot {
                     index: 1,
@@ -648,6 +815,7 @@ mod tests {
             project: "my-proj".to_string(),
             session_name: "agy-my-proj".to_string(),
             timestamp: 1000,
+            name: None,
             windows: vec![
                 WindowSnapshot {
                     index: 1,
@@ -680,6 +848,7 @@ mod tests {
             project: "my-proj".to_string(),
             session_name: "agy-my-proj".to_string(),
             timestamp: 2000,
+            name: None,
             windows: vec![WindowSnapshot {
                 index: 1,
                 name: "+ new".to_string(),
@@ -708,6 +877,7 @@ mod tests {
             project: "my-proj".to_string(),
             session_name: "agy-my-proj".to_string(),
             timestamp: 3000,
+            name: None,
             windows: vec![WindowSnapshot {
                 index: 1,
                 name: "ce-research".to_string(),
@@ -803,5 +973,52 @@ mod tests {
 
         let missing_none = find_missing_windows(&snapshot_windows, &live_all);
         assert!(missing_none.is_empty());
+    }
+
+    #[test]
+    fn test_session_history_save_and_prune() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let proj = "test-hist-proj";
+        let hist_dir = temp_dir.path().join("history").join(proj);
+        fs::create_dir_all(&hist_dir).unwrap();
+
+        // Write 5 fake history entries
+        for i in 1..=5 {
+            let snap = SessionSnapshot {
+                project: proj.to_string(),
+                session_name: format!("agy-{}", proj),
+                timestamp: 1000 + i,
+                name: if i == 5 { Some("named-snap".to_string()) } else { None },
+                windows: vec![],
+            };
+            let fname = format!("{}.json", 1000 + i);
+            fs::write(hist_dir.join(fname), serde_json::to_string(&snap).unwrap()).unwrap();
+        }
+
+        // Test manual prune directly using logic
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(&hist_dir).unwrap().flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                let ts = p
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .and_then(|s| s.split('_').next())
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .unwrap_or(0);
+                entries.push((ts, p));
+            }
+        }
+        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        assert_eq!(entries.len(), 5);
+
+        // Keep 3
+        let max_history = 3;
+        for (_, p) in &entries[max_history..] {
+            fs::remove_file(p).unwrap();
+        }
+
+        let remaining: Vec<_> = fs::read_dir(&hist_dir).unwrap().flatten().collect();
+        assert_eq!(remaining.len(), 3);
     }
 }

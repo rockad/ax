@@ -65,6 +65,8 @@ pub fn run() -> Result<()> {
                 &[],
                 remote_control,
                 cli.harness.as_deref(),
+                cli.fresh,
+                cli.restore,
             )?;
         }
         Some(Commands::Attach { args }) => {
@@ -77,6 +79,8 @@ pub fn run() -> Result<()> {
                 &args,
                 rc,
                 cli.harness.as_deref(),
+                cli.fresh,
+                cli.restore,
             )?;
         }
 
@@ -137,6 +141,9 @@ pub fn run() -> Result<()> {
                     }
                     "restore" | "restore-session" | "restore-layout" => {
                         ui::palette::PaletteAction::RestoreSession
+                    }
+                    "history" | "session-history" | "snapshots" => {
+                        ui::palette::PaletteAction::SessionHistory
                     }
                     other => bail!("Unknown palette action: {}", other),
                 };
@@ -278,23 +285,55 @@ pub fn run() -> Result<()> {
                 None => {
                     execute_restore(&project)?;
                 }
-                Some(SessionAction::Restore { project: restore_proj }) => {
+                Some(SessionAction::Restore { project: restore_proj, snapshot }) => {
                     let target_project = restore_proj.unwrap_or_else(|| project.clone());
-                    execute_restore(&target_project)?;
+                    if let Some(snap_id) = snapshot {
+                        match crate::core::restore_session_from_history(&target_project, &snap_id) {
+                            Ok(true) => {
+                                println!("Restored session snapshot '{}' for '{}'", snap_id, target_project);
+                                let target_session = if target_project.starts_with("agy-") {
+                                    target_project
+                                } else {
+                                    format!("agy-{}", target_project)
+                                };
+                                if std::env::var("TMUX").is_ok() {
+                                    tmux::TmuxDriver::switch_client(&target_session)?;
+                                } else {
+                                    tmux::TmuxDriver::attach_session(&target_session)?;
+                                }
+                            }
+                            Ok(false) => {
+                                println!("No snapshot matching '{}' found for project '{}'", snap_id, target_project);
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to restore session snapshot: {}", e);
+                            }
+                        }
+                    } else {
+                        execute_restore(&target_project)?;
+                    }
                 }
-                Some(SessionAction::Save { project: save_proj }) => {
+                Some(SessionAction::Save { project: save_proj, name }) => {
                     let target_project = save_proj.unwrap_or_else(|| project.clone());
-                    match crate::core::save_session_layout(&target_project) {
+                    match crate::core::save_named_session_layout(&target_project, name.as_deref()) {
                         Ok(path) => {
-                            println!("Saved session snapshot to {}", path.display());
+                            if let Some(ref n) = name {
+                                println!("Saved session snapshot '{}' to {}", n, path.display());
+                            } else {
+                                println!("Saved session snapshot to {}", path.display());
+                            }
                         }
                         Err(e) => {
                             eprintln!("Failed to save session snapshot: {}", e);
                         }
                     }
                 }
-                Some(SessionAction::Ls) => {
-                    run_session_ls()?;
+                Some(SessionAction::History { project: hist_proj }) => {
+                    let target_project = hist_proj.unwrap_or_else(|| project.clone());
+                    run_session_history(&target_project)?;
+                }
+                Some(SessionAction::Ls { project: ls_proj }) => {
+                    run_session_ls(ls_proj.as_deref())?;
                 }
             }
         }
@@ -327,6 +366,8 @@ fn handle_attach(
     args: &[String],
     remote_control: bool,
     harness: Option<&str>,
+    fresh_flag: bool,
+    restore_flag: bool,
 ) -> Result<()> {
     use std::io::IsTerminal;
 
@@ -616,38 +657,112 @@ fn handle_attach(
         }
     }
 
-    // Session does not exist yet: check if saved session layout snapshot exists to restore
-    if let Ok(true) = crate::core::restore_session_layout(project) {
-        if let Some(req_harness) = harness {
-            let out = Command::new("tmux")
-                .args([
-                    "list-windows",
-                    "-t",
-                    session_name,
-                    "-F",
-                    "#{window_id}:#{@harness}",
-                ])
-                .output();
-            if let Ok(o) = out {
-                let s = String::from_utf8_lossy(&o.stdout);
-                for line in s.lines() {
-                    let parts: Vec<&str> = line.split(':').collect();
-                    if parts.len() >= 2 && parts[1].trim() == req_harness {
-                        let win_id = parts[0].trim();
-                        let _ = Command::new("tmux")
-                            .args(["select-window", "-t", win_id])
-                            .status();
-                        break;
+    // Session does not exist yet: check restore flow according to flags & configuration
+    let mut should_restore = false;
+    let mut chosen_snapshot: Option<crate::core::SessionSnapshot> = None;
+
+    if restore_flag {
+        should_restore = true;
+    } else if fresh_flag {
+        should_restore = false;
+    } else {
+        let snapshot_file = crate::core::session_snapshot_path(project);
+        if snapshot_file.exists() {
+            let existing_snap: Option<crate::core::SessionSnapshot> = fs::read_to_string(&snapshot_file)
+                .ok()
+                .and_then(|content| serde_json::from_str(&content).ok());
+
+            if let Some(snap) = existing_snap {
+                match config.session.restore_mode {
+                    crate::config::SessionRestoreMode::Restore => {
+                        should_restore = true;
+                        chosen_snapshot = Some(snap);
+                    }
+                    crate::config::SessionRestoreMode::Fresh => {
+                        should_restore = false;
+                    }
+                    crate::config::SessionRestoreMode::Ask => {
+                        if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+                            match ui::run_restore_selector(project.to_string(), &snap)? {
+                                Some((ui::RestoreChoice::RestorePrevious, remember)) => {
+                                    if remember {
+                                        let mut updated = config.clone();
+                                        updated.session.restore_mode = crate::config::SessionRestoreMode::Restore;
+                                        let _ = updated.save();
+                                    }
+                                    should_restore = true;
+                                    chosen_snapshot = Some(snap);
+                                }
+                                Some((ui::RestoreChoice::StartFresh, remember)) => {
+                                    if remember {
+                                        let mut updated = config.clone();
+                                        updated.session.restore_mode = crate::config::SessionRestoreMode::Fresh;
+                                        let _ = updated.save();
+                                    }
+                                    should_restore = false;
+                                }
+                                Some((ui::RestoreChoice::BrowseHistory, _)) => {
+                                    if let Some(hist_snap) = ui::run_session_history_picker(project)? {
+                                        should_restore = true;
+                                        chosen_snapshot = Some(hist_snap);
+                                    } else {
+                                        return Ok(());
+                                    }
+                                }
+                                None => {
+                                    // User cancelled
+                                    return Ok(());
+                                }
+                            }
+                        } else {
+                            should_restore = true;
+                            chosen_snapshot = Some(snap);
+                        }
                     }
                 }
             }
         }
-        if std::env::var("TMUX").is_ok() {
-            return tmux::TmuxDriver::switch_client(session_name);
-        } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
-            return tmux::TmuxDriver::attach_session(session_name);
+    }
+
+    if should_restore {
+        let restore_res = if let Some(ref snap) = chosen_snapshot {
+            crate::core::restore_session_snapshot(project, snap)
         } else {
-            return Ok(());
+            crate::core::restore_session_layout(project)
+        };
+
+        if let Ok(true) = restore_res {
+            if let Some(req_harness) = harness {
+                let out = Command::new("tmux")
+                    .args([
+                        "list-windows",
+                        "-t",
+                        session_name,
+                        "-F",
+                        "#{window_id}:#{@harness}",
+                    ])
+                    .output();
+                if let Ok(o) = out {
+                    let s = String::from_utf8_lossy(&o.stdout);
+                    for line in s.lines() {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() >= 2 && parts[1].trim() == req_harness {
+                            let win_id = parts[0].trim();
+                            let _ = Command::new("tmux")
+                                .args(["select-window", "-t", win_id])
+                                .status();
+                            break;
+                        }
+                    }
+                }
+            }
+            if std::env::var("TMUX").is_ok() {
+                return tmux::TmuxDriver::switch_client(session_name);
+            } else if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+                return tmux::TmuxDriver::attach_session(session_name);
+            } else {
+                return Ok(());
+            }
         }
     }
 
@@ -1644,8 +1759,78 @@ pub fn execute_restore(target_project: &str) -> Result<()> {
     Ok(())
 }
 
+/// Browse and restore session history
+pub fn run_session_history(target_project: &str) -> Result<()> {
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        if let Some(selected_snap) = ui::run_session_history_picker(target_project)? {
+            match crate::core::restore_session_snapshot(target_project, &selected_snap) {
+                Ok(true) => {
+                    println!("Restored session snapshot for '{}'", target_project);
+                    let target_session = if target_project.starts_with("agy-") {
+                        target_project.to_string()
+                    } else {
+                        format!("agy-{}", target_project)
+                    };
+                    if std::env::var("TMUX").is_ok() {
+                        tmux::TmuxDriver::switch_client(&target_session)?;
+                    } else {
+                        tmux::TmuxDriver::attach_session(&target_session)?;
+                    }
+                }
+                Ok(false) => {
+                    println!("Failed to restore session snapshot");
+                }
+                Err(e) => {
+                    eprintln!("Failed to restore session snapshot: {}", e);
+                }
+            }
+        }
+    } else {
+        let history = crate::core::list_session_history(target_project)?;
+        if history.is_empty() {
+            println!("No session history found for '{}'", target_project);
+        } else {
+            println!("Session history for '{}' ({} entries):", target_project, history.len());
+            for snap in history {
+                let rel = crate::core::session::format_relative_time(snap.timestamp);
+                let label = snap.name.as_deref().map(|n| format!(" [{}]", n)).unwrap_or_default();
+                println!(
+                    "  {} ({} tabs, saved {}){}",
+                    snap.timestamp,
+                    snap.windows.len(),
+                    rel,
+                    label
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// List available session layout snapshots saved on disk
-pub fn run_session_ls() -> Result<()> {
+pub fn run_session_ls(project_filter: Option<&str>) -> Result<()> {
+    if let Some(proj) = project_filter {
+        let history = crate::core::list_session_history(proj)?;
+        if history.is_empty() {
+            println!("No saved session snapshots found for '{}'", proj);
+        } else {
+            println!("Saved session snapshots for '{}' ({}):", proj, history.len());
+            for snap in history {
+                let rel = crate::core::session::format_relative_time(snap.timestamp);
+                let label = snap.name.as_deref().map(|n| format!(" [{}]", n)).unwrap_or_default();
+                println!(
+                    "  {} ({} windows, saved {}){}",
+                    snap.timestamp,
+                    snap.windows.len(),
+                    rel,
+                    label
+                );
+            }
+        }
+        return Ok(());
+    }
+
     let dir = crate::core::sessions_dir();
     if !dir.exists() {
         println!("No saved session snapshots found.");
@@ -1673,11 +1858,13 @@ pub fn run_session_ls() -> Result<()> {
         println!("Saved session snapshots ({}):", dir.display());
         for snap in snapshots {
             let rel = crate::core::session::format_relative_time(snap.timestamp);
+            let label = snap.name.as_deref().map(|n| format!(" [{}]", n)).unwrap_or_default();
             println!(
-                "  {} ({} windows, saved {})",
+                "  {} ({} windows, saved {}){}",
                 snap.project,
                 snap.windows.len(),
-                rel
+                rel,
+                label
             );
         }
     }
