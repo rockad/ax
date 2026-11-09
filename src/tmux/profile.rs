@@ -76,7 +76,7 @@ impl TmuxProfile {
             .unwrap_or("bottom");
         lines.push(format!("set -g pane-border-status {}", border_status));
         if border_status != "off" {
-            lines.push("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default] · #(ax git-status \\\"#{pane_current_path}\\\") · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\"".to_string());
+            lines.push("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default]#(ax git-status \\\"#{pane_current_path}\\\") · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\"".to_string());
         }
 
         // Style statusline messages so notifications/alerts are visible without obstructing
@@ -428,7 +428,7 @@ mod tests {
         assert!(content.contains("set -g status-position top"));
         assert!(content.contains("set -g pane-border-status bottom"));
         assert!(content.contains("set -g status-right \"\""));
-        assert!(content.contains("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default] · #(ax git-status \\\"#{pane_current_path}\\\") · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\""));
+        assert!(content.contains("set -g pane-border-format \"#{?pane_active,#[fg=colour73]#[bold],#[fg=colour244]} #{?#{@harness},#{@harness},#{?#{@active_harness},#{@active_harness},#{pane_current_command}}} #[default]· #[fg=colour250]#{?#{@ax_project},#{@ax_project},#{?#{@agymux_project},#{@agymux_project},#S}}#[default]#(ax git-status \\\"#{pane_current_path}\\\") · #[fg=colour244]#{pane_current_path}#[default] #[align=right] #[fg=colour244]%H:%M · %Y-%m-%d #[default]\""));
         assert!(content.contains("bind J display-popup -E -w 75% -h 55% \"ax join\""));
         assert!(content.contains("bind j display-popup -E -w 75% -h 55% \"ax join\""));
         assert!(content.contains("bind U run-shell \"tmux break-pane -d\""));

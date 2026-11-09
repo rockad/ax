@@ -2780,7 +2780,7 @@ pub fn run_git_status(path: Option<PathBuf>) -> Result<()> {
     let dir =
         path.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     if let Some(status) = format_git_status(&dir) {
-        print!("{}", status);
+        print!(" · {}", status);
     }
     Ok(())
 }
