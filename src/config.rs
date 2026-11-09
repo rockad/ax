@@ -750,13 +750,34 @@ ANTHROPIC_API_KEY = "test-key"
         assert_eq!(SessionRestoreMode::Fresh.to_string(), "fresh");
         assert_eq!(SessionRestoreMode::Ask.to_string(), "ask");
 
-        assert_eq!("restore".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
-        assert_eq!("prev".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
-        assert_eq!("previous".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Restore);
-        assert_eq!("fresh".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Fresh);
-        assert_eq!("new".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Fresh);
-        assert_eq!("ask".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Ask);
-        assert_eq!("prompt".parse::<SessionRestoreMode>().unwrap(), SessionRestoreMode::Ask);
+        assert_eq!(
+            "restore".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Restore
+        );
+        assert_eq!(
+            "prev".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Restore
+        );
+        assert_eq!(
+            "previous".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Restore
+        );
+        assert_eq!(
+            "fresh".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Fresh
+        );
+        assert_eq!(
+            "new".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Fresh
+        );
+        assert_eq!(
+            "ask".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Ask
+        );
+        assert_eq!(
+            "prompt".parse::<SessionRestoreMode>().unwrap(),
+            SessionRestoreMode::Ask
+        );
 
         assert!("invalid-mode".parse::<SessionRestoreMode>().is_err());
     }

@@ -18,6 +18,8 @@ pub use join_picker::{JoinCandidate, JoinPickerResult, JoinPickerState};
 pub use palette::{PaletteAction, PaletteItem, PaletteState};
 pub use picker::{ItemKind, PickerCandidate, PickerState};
 pub use project_picker::{ProjectItem, ProjectPickerState};
-pub use restore_selector::{run_restore_selector, RestoreChoice, RestoreOption, RestoreSelectorState};
+pub use restore_selector::{
+    run_restore_selector, RestoreChoice, RestoreOption, RestoreSelectorState,
+};
 pub use session_history::{run_session_history_picker, SessionHistoryResult, SessionHistoryState};
 pub use startup::{StartupOption, StartupResult, StartupState};

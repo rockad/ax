@@ -63,7 +63,13 @@ pub fn session_snapshot_path(project: &str) -> PathBuf {
 
 fn sanitize_snapshot_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -251,7 +257,7 @@ pub fn prune_session_history(project: &str, max_history: usize) -> Result<()> {
         }
     }
 
-    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    entries.sort_by_key(|a| std::cmp::Reverse(a.0));
 
     if entries.len() > max_history {
         for (_, path) in &entries[max_history..] {
@@ -294,7 +300,7 @@ pub fn list_session_history(project: &str) -> Result<Vec<SessionSnapshot>> {
         }
     }
 
-    snapshots.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    snapshots.sort_by_key(|a| std::cmp::Reverse(a.timestamp));
     Ok(snapshots)
 }
 
@@ -412,7 +418,10 @@ pub fn restore_session_from_history(project: &str, identifier: &str) -> Result<b
 
     let found = snapshots.into_iter().find(|s| {
         s.timestamp.to_string() == trimmed
-            || s.name.as_deref().map(|n| n.eq_ignore_ascii_case(trimmed)).unwrap_or(false)
+            || s.name
+                .as_deref()
+                .map(|n| n.eq_ignore_ascii_case(trimmed))
+                .unwrap_or(false)
             || trimmed.is_empty()
     });
 
@@ -504,15 +513,21 @@ pub fn restore_session_snapshot(project: &str, snapshot: &SessionSnapshot) -> Re
 
             // Check if window 1 has an active non-shell process
             let pane_cmd = Command::new("tmux")
-                .args(["display-message", "-p", "-t", &win_target, "#{pane_current_command}"])
+                .args([
+                    "display-message",
+                    "-p",
+                    "-t",
+                    &win_target,
+                    "#{pane_current_command}",
+                ])
                 .output()
                 .ok()
                 .and_then(|o| String::from_utf8(o.stdout).ok())
                 .map(|s| s.trim().to_string())
                 .unwrap_or_default();
 
-            let is_idle_shell = pane_cmd.is_empty()
-                || matches!(pane_cmd.as_str(), "zsh" | "bash" | "sh" | "fish");
+            let is_idle_shell =
+                pane_cmd.is_empty() || matches!(pane_cmd.as_str(), "zsh" | "bash" | "sh" | "fish");
 
             if is_idle_shell {
                 let cmd = build_window_command(project, first_win);
@@ -988,7 +1003,11 @@ mod tests {
                 project: proj.to_string(),
                 session_name: format!("agy-{}", proj),
                 timestamp: 1000 + i,
-                name: if i == 5 { Some("named-snap".to_string()) } else { None },
+                name: if i == 5 {
+                    Some("named-snap".to_string())
+                } else {
+                    None
+                },
                 windows: vec![],
             };
             let fname = format!("{}.json", 1000 + i);
@@ -1009,7 +1028,7 @@ mod tests {
                 entries.push((ts, p));
             }
         }
-        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        entries.sort_by_key(|a| std::cmp::Reverse(a.0));
         assert_eq!(entries.len(), 5);
 
         // Keep 3

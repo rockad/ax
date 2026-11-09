@@ -1026,7 +1026,15 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         },
         PaletteAction::SessionHistory => {
             let _ = Command::new("tmux")
-                .args(["display-popup", "-E", "-w", "85%", "-h", "65%", "ax session history"])
+                .args([
+                    "display-popup",
+                    "-E",
+                    "-w",
+                    "85%",
+                    "-h",
+                    "65%",
+                    "ax session history",
+                ])
                 .status();
         }
     }

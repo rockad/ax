@@ -176,7 +176,9 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
                     Span::styled(
                         if is_selected { "▶ " } else { "  " },
                         if is_selected {
-                            Style::default().fg(COLOR_YELLOW).add_modifier(Modifier::BOLD)
+                            Style::default()
+                                .fg(COLOR_YELLOW)
+                                .add_modifier(Modifier::BOLD)
                         } else {
                             muted_style()
                         },
@@ -184,7 +186,9 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
                     Span::styled(
                         rel,
                         if is_selected {
-                            Style::default().fg(COLOR_GREEN).add_modifier(Modifier::BOLD)
+                            Style::default()
+                                .fg(COLOR_GREEN)
+                                .add_modifier(Modifier::BOLD)
                         } else {
                             Style::default().fg(COLOR_FG)
                         },
@@ -256,12 +260,17 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
         let rel = crate::core::session::format_relative_time(snap.timestamp);
         lines.push(Line::from(vec![
             Span::styled("Saved:   ", Style::default().fg(COLOR_CYAN)),
-            Span::styled(format!("{} (epoch: {})", rel, snap.timestamp), muted_style()),
+            Span::styled(
+                format!("{} (epoch: {})", rel, snap.timestamp),
+                muted_style(),
+            ),
         ]));
 
         lines.push(Line::from(vec![Span::styled(
             format!("Windows ({}):", snap.windows.len()),
-            Style::default().fg(COLOR_YELLOW).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(COLOR_YELLOW)
+                .add_modifier(Modifier::BOLD),
         )]));
 
         for win in &snap.windows {
@@ -272,17 +281,20 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
                 _ => "󰚩 agy",
             };
             let mut win_spans = vec![
-                Span::styled(format!("  • Tab {}: ", win.index), Style::default().fg(COLOR_GREEN)),
-                Span::styled(&win.name, Style::default().fg(COLOR_FG).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("  • Tab {}: ", win.index),
+                    Style::default().fg(COLOR_GREEN),
+                ),
+                Span::styled(
+                    &win.name,
+                    Style::default().fg(COLOR_FG).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
                 Span::styled(format!("({})", h_icon), Style::default().fg(COLOR_PURPLE)),
             ];
             if let Some(ref cid) = win.conversation_id {
                 win_spans.push(Span::raw(" "));
-                win_spans.push(Span::styled(
-                    format!("cid: {:.8}...", cid),
-                    muted_style(),
-                ));
+                win_spans.push(Span::styled(format!("cid: {:.8}...", cid), muted_style()));
             }
             lines.push(Line::from(win_spans));
 
@@ -303,7 +315,9 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
             }
         }
 
-        Paragraph::new(lines).block(preview_block).wrap(Wrap { trim: false })
+        Paragraph::new(lines)
+            .block(preview_block)
+            .wrap(Wrap { trim: false })
     } else {
         Paragraph::new("  (No snapshot selected)")
             .block(preview_block)
@@ -319,7 +333,9 @@ pub fn render(f: &mut Frame, area: Rect, state: &SessionHistoryState) {
     let footer_p = Paragraph::new(Line::from(vec![Span::styled(
         format!("  {}", status_text),
         if state.status_message.is_some() {
-            Style::default().fg(COLOR_YELLOW).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(COLOR_YELLOW)
+                .add_modifier(Modifier::BOLD)
         } else {
             muted_style()
         },
@@ -399,7 +415,8 @@ mod tests {
             windows: vec![],
         };
 
-        let mut state = SessionHistoryState::new("test".to_string(), vec![snap1.clone(), snap2.clone()]);
+        let mut state =
+            SessionHistoryState::new("test".to_string(), vec![snap1.clone(), snap2.clone()]);
         assert_eq!(state.selected, 0);
         assert_eq!(state.selected_snapshot().unwrap().timestamp, 1000);
 
@@ -430,7 +447,10 @@ mod tests {
         let mut state = SessionHistoryState::new("test".to_string(), vec![snap]);
 
         // Enter confirms
-        match handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &mut state) {
+        match handle_key(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &mut state,
+        ) {
             SessionHistoryResult::Confirm(s) => assert_eq!(s.timestamp, 1000),
             _ => panic!("Expected Confirm"),
         }

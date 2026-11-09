@@ -610,7 +610,8 @@ mod tests {
         }
 
         let cli_restore_proj =
-            Cli::try_parse_from(["ax", "session", "restore", "my-project", "12345678"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "session", "restore", "my-project", "12345678"])
+                .expect("parsing succeeds");
         match cli_restore_proj.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Restore { project, snapshot }),
@@ -634,7 +635,8 @@ mod tests {
         }
 
         let cli_save_proj =
-            Cli::try_parse_from(["ax", "session", "save", "my-project", "my-snapshot"]).expect("parsing succeeds");
+            Cli::try_parse_from(["ax", "session", "save", "my-project", "my-snapshot"])
+                .expect("parsing succeeds");
         match cli_save_proj.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Save { project, name }),
@@ -645,7 +647,8 @@ mod tests {
             other => panic!("expected Session Save project, got {:?}", other),
         }
 
-        let cli_history = Cli::try_parse_from(["ax", "session", "history", "my-project"]).expect("parsing succeeds");
+        let cli_history = Cli::try_parse_from(["ax", "session", "history", "my-project"])
+            .expect("parsing succeeds");
         match cli_history.command {
             Some(Commands::Session {
                 action: Some(SessionAction::History { project }),
@@ -653,7 +656,8 @@ mod tests {
             other => panic!("expected Session History, got {:?}", other),
         }
 
-        let cli_ls = Cli::try_parse_from(["ax", "session", "ls", "my-project"]).expect("parsing succeeds");
+        let cli_ls =
+            Cli::try_parse_from(["ax", "session", "ls", "my-project"]).expect("parsing succeeds");
         match cli_ls.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Ls { project }),

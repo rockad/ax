@@ -58,7 +58,11 @@ impl RestoreSelectorState {
             RestoreOption {
                 choice: RestoreChoice::RestorePrevious,
                 key_label: "1",
-                title: format!("🔄 Restore previous session ({} tabs{})", snapshot.windows.len(), tabs_preview),
+                title: format!(
+                    "🔄 Restore previous session ({} tabs{})",
+                    snapshot.windows.len(),
+                    tabs_preview
+                ),
                 subtitle: format!("Saved {}", rel),
             },
             RestoreOption {
@@ -366,7 +370,10 @@ mod tests {
         let mut state = RestoreSelectorState::new("my-proj".to_string(), &snap);
 
         // '1' confirms RestorePrevious
-        match handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE), &mut state) {
+        match handle_key(
+            KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE),
+            &mut state,
+        ) {
             RestoreSelectorResult::Confirm(choice, rem) => {
                 assert_eq!(choice, RestoreChoice::RestorePrevious);
                 assert!(!rem);
@@ -376,7 +383,10 @@ mod tests {
 
         // '2' confirms StartFresh
         state.remember = true;
-        match handle_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE), &mut state) {
+        match handle_key(
+            KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE),
+            &mut state,
+        ) {
             RestoreSelectorResult::Confirm(choice, rem) => {
                 assert_eq!(choice, RestoreChoice::StartFresh);
                 assert!(rem);
@@ -385,7 +395,10 @@ mod tests {
         }
 
         // '3' confirms BrowseHistory
-        match handle_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE), &mut state) {
+        match handle_key(
+            KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE),
+            &mut state,
+        ) {
             RestoreSelectorResult::Confirm(choice, _) => {
                 assert_eq!(choice, RestoreChoice::BrowseHistory);
             }
