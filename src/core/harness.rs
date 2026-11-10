@@ -35,7 +35,7 @@ impl AgentHarness {
         let trimmed = s.trim();
         let lower = trimmed.to_lowercase();
         match lower.as_str() {
-            "agy" | "antigravity" | "gemini" => Self::Antigravity,
+            "agy" | "antigravity" => Self::Antigravity,
             "claude" | "claudecode" | "claude-code" => Self::ClaudeCode,
             "opencode" | "open-code" => Self::OpenCode,
             "codex" | "openai" | "openai-codex" => Self::Codex,
@@ -1015,6 +1015,10 @@ mod tests {
 
     #[test]
     fn test_agent_harness_strings_and_loose_parsing() {
+        assert_eq!(
+            AgentHarness::from_str_loose("gemini"),
+            AgentHarness::Custom("gemini".to_string())
+        );
         assert_eq!(
             AgentHarness::from_str_loose("agy"),
             AgentHarness::Antigravity

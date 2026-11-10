@@ -738,7 +738,10 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "command-prompt",
                     "-p",
                     "New worktree branch: ",
-                    &format!("new-window -n '[%%]' 'git worktree add -b %% .worktrees/%% && cd .worktrees/%% && ax run --project \"{}\"'", proj),
+                    &format!(
+                        "new-window -n '[%%]' 'sh -c \"RAW=\\\"%%\\\"; BRANCH=\\$(printf \\\"%s\\\" \\\"\\$RAW\\\" | tr \\\" \\\" \\\"-\\\" | tr -cd \\\"a-zA-Z0-9._/-\\\" | sed \\\"s/^-*//\\\"); [ -n \\\"\\$BRANCH\\\" ] && git worktree add -b -- \\\"\\$BRANCH\\\" \\\".worktrees/\\$BRANCH\\\" && cd \\\".worktrees/\\$BRANCH\\\" && ax run --project \\\"{}\\\"\"'",
+                        proj
+                    ),
                 ])
                 .status();
         }
@@ -854,68 +857,8 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                 .status();
         }
         PaletteAction::ReloadActiveSession => {
-            if std::env::var("TMUX").is_ok() {
-                let _ = Command::new("tmux")
-                    .args(["set-option", "-w", "@external_sync", "0"])
-                    .status();
-            }
-
-            let cid_output = Command::new("tmux")
-                .args(["display-message", "-p", "#{@conversation_id}"])
-                .output();
-            let current_cid = cid_output
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty() && s != "-")
-                .or_else(|| std::env::var("CONVERSATION_ID").ok())
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    let db = crate::db_path();
-                    if db.exists() {
-                        rusqlite::Connection::open(&db).ok().and_then(|conn| {
-                            crate::core::session::latest_conversation_id(&conn, Some(proj))
-                        })
-                    } else {
-                        None
-                    }
-                });
-
-            if let Some(cid) = current_cid {
-                let config = crate::config::Config::load().unwrap_or_default();
-                let rc_flag = if config.general.remote_control {
-                    " --remote-control"
-                } else {
-                    ""
-                };
-                let reload_cmd = format!(
-                    "ax run --project '{}' --conversation '{}'{}",
-                    proj, cid, rc_flag
-                );
-
-                if std::env::var("TMUX").is_ok() {
-                    let _ = Command::new("tmux")
-                        .args(["respawn-pane", "-k", &reload_cmd])
-                        .status();
-                    let toast = format!("Reloaded session: {}", cid);
-                    let _ = Command::new("tmux")
-                        .args(["display-message", &toast])
-                        .status();
-                } else {
-                    println!("Reloading session: {}", cid);
-                    let mut cmd = Command::new("agy");
-                    cmd.args(["--project", proj, "--conversation", &cid]);
-                    if config.general.remote_control {
-                        cmd.arg("--remote-control");
-                    }
-                    let _ = cmd.status();
-                }
-            } else if std::env::var("TMUX").is_ok() {
-                let _ = Command::new("tmux")
-                    .args(["display-message", "No active conversation bound to reload"])
-                    .status();
-            } else {
-                println!("No active conversation bound to reload");
+            if let Err(e) = crate::run_restart(None) {
+                eprintln!("Failed to reload session: {}", e);
             }
         }
         PaletteAction::SplitHorizontal => {
@@ -1058,4 +1001,122 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
     }
     Ok(())
+}
+
+/// Shell single-quotes a string to make it safe for POSIX shell command execution
+pub fn shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Sanitize branch name for git worktree creation:
+/// - Trims whitespace
+/// - Replaces spaces with '-'
+/// - Strips quotes (`'`, `"`) and shell metacharacters (`;`, `&`, `|`, `$`, `\`, etc.)
+/// - Strips leading hyphens to prevent CLI flag injection
+pub fn sanitize_worktree_branch(branch: &str) -> String {
+    let trimmed = branch.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut sanitized = String::new();
+    let mut last_char = '\0';
+    for c in trimmed.chars() {
+        let mapped = if c == ' ' {
+            '-'
+        } else if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' {
+            c
+        } else {
+            continue;
+        };
+
+        // Collapse multiple consecutive hyphens or slashes
+        if (mapped == '-' && last_char == '-') || (mapped == '/' && last_char == '/') {
+            continue;
+        }
+
+        sanitized.push(mapped);
+        last_char = mapped;
+    }
+
+    // Strip leading and trailing hyphens, slashes, and dots
+    sanitized
+        .trim_matches(|c| c == '-' || c == '/' || c == '.')
+        .to_string()
+}
+
+/// Format the shell command for creating a git worktree and launching ax
+pub fn format_worktree_command(branch: &str, project: &str) -> String {
+    let clean_branch = sanitize_worktree_branch(branch);
+    let wt_path = format!(".worktrees/{}", clean_branch);
+    format!(
+        "git worktree add -b -- {} {} && cd {} && ax run --project {}",
+        shell_quote(&clean_branch),
+        shell_quote(&wt_path),
+        shell_quote(&wt_path),
+        shell_quote(project)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_worktree_branch_clean() {
+        assert_eq!(
+            sanitize_worktree_branch("feature/cool-branch"),
+            "feature/cool-branch"
+        );
+        assert_eq!(sanitize_worktree_branch("fix_123"), "fix_123");
+    }
+
+    #[test]
+    fn test_sanitize_worktree_branch_spaces() {
+        assert_eq!(sanitize_worktree_branch("feature new ui"), "feature-new-ui");
+        assert_eq!(
+            sanitize_worktree_branch("  spaced branch  "),
+            "spaced-branch"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_worktree_branch_leading_hyphens() {
+        assert_eq!(sanitize_worktree_branch("--detach"), "detach");
+        assert_eq!(sanitize_worktree_branch("-b"), "b");
+        assert_eq!(sanitize_worktree_branch("---foo-bar"), "foo-bar");
+    }
+
+    #[test]
+    fn test_sanitize_worktree_branch_quotes_and_injection() {
+        assert_eq!(sanitize_worktree_branch("feat'; rm -rf /; '"), "feat-rm-rf");
+        assert_eq!(sanitize_worktree_branch("\"quoted\""), "quoted");
+        assert_eq!(sanitize_worktree_branch("`whoami`$PATH"), "whoamiPATH");
+    }
+
+    #[test]
+    fn test_shell_quote() {
+        assert_eq!(shell_quote(""), "''");
+        assert_eq!(shell_quote("normal"), "'normal'");
+        assert_eq!(shell_quote("with space"), "'with space'");
+        assert_eq!(shell_quote("with'quote"), "'with'\\''quote'");
+    }
+
+    #[test]
+    fn test_format_worktree_command() {
+        let cmd = format_worktree_command("feature/test", "my-project");
+        assert_eq!(
+            cmd,
+            "git worktree add -b -- 'feature/test' '.worktrees/feature/test' && cd '.worktrees/feature/test' && ax run --project 'my-project'"
+        );
+
+        let cmd_injection = format_worktree_command("--flag; injection", "proj");
+        assert_eq!(
+            cmd_injection,
+            "git worktree add -b -- 'flag-injection' '.worktrees/flag-injection' && cd '.worktrees/flag-injection' && ax run --project 'proj'"
+        );
+    }
 }

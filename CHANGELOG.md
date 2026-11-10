@@ -1,3 +1,57 @@
+## [0.8.5] - 2026-11-10
+
+### 🚀 Features
+
+- In-place harness restart command across ax, tmux, claude, and opencode (`ax restart`, Ctrl+Space S, right-click tab menu)
+- Interactive session history navigator modal and configurable launch restore mode
+- Resilient session restoration, snapshot clobber protection, and Claude Code `--resume` session parsing
+- Claude Code running & completion indicator parity via `UserPromptSubmit` and `Stop` hooks
+- Safe hook installation merging hooks into `~/.claude/settings.json` and `~/.gemini/config/hooks.json`
+
+### 🐛 Bug Fixes
+
+- *(tmux)* Omit leading separator dot when pane directory is not a git repository
+
+### 🎨 Styling
+
+- *(ci)* Resolve clippy warnings and format codebase with rustfmt
+
+## [0.8.4] - 2026-11-05
+
+### 🚀 Features
+
+- Branch ahead/behind telemetry in pane border statusline (`ax git-status`)
+
+## [0.8.3] - 2026-11-05
+
+### 🚀 Features
+
+- Bidirectional tab renaming synchronization and multi-harness session switcher (`ax rename`, multi-harness discovery)
+
+## [0.8.2] - 2026-11-05
+
+### 🚀 Features
+
+- Session restoration precedence, tab title preservation, per-pane harness telemetry, and `ax restore` command
+
+## [0.8.1] - 2026-11-05
+
+### 🚀 Features
+
+- Global harness flag (`--harness`), dynamic attach tab selection, and consolidation of `dga`/`dgc`/`dgo` into `ax`
+
+## [0.8.0] - 2026-11-04
+
+### 🚀 Features
+
+- Tab joining & unsplitting (`ax join`, `ax unsplit`), layout persistence, and slot 2 indicator refinement
+
+## [0.7.1] - 2026-11-04
+
+### 🚀 Features
+
+- Dynamic harness telemetry, per-tab running indicators, and full-width tab formatting
+
 ## [0.7.0] - 2026-11-03
 
 ### 🚀 Features

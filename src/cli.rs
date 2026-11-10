@@ -192,7 +192,8 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    /// Install or update ax lifecycle hook in Antigravity configuration
+    /// Install or update ax lifecycle hooks in Antigravity and Claude Code configuration
+    #[command(alias = "setup")]
     Install,
 }
 
@@ -513,6 +514,9 @@ mod tests {
 
         let cli_install = Cli::try_parse_from(["ax", "install"]).expect("parsing succeeds");
         assert!(matches!(cli_install.command, Some(Commands::Install)));
+
+        let cli_setup = Cli::try_parse_from(["ax", "setup"]).expect("parsing succeeds");
+        assert!(matches!(cli_setup.command, Some(Commands::Install)));
     }
 
     #[test]

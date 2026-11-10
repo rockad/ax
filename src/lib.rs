@@ -387,6 +387,7 @@ fn handle_attach(
     use std::io::IsTerminal;
 
     let _ = ensure_hook_installed();
+    let _ = ensure_claude_hooks_installed();
     let _ = heal_unbound_windows(project);
 
     let requested_rc = remote_control || args.contains(&"--remote-control".to_string());
@@ -1387,7 +1388,7 @@ pub fn build_agy_args(
             i += 1;
             continue;
         }
-        if a == "-c" || a == "--conversation" || a == "--continue" {
+        if a == "-c" || a == "--conversation" || a == "--continue" || a == "--resume" || a == "-r" {
             if i + 1 < args.len() && !args[i + 1].starts_with('-') {
                 i += 2;
             } else {
@@ -1413,6 +1414,83 @@ pub fn build_agy_args(
     forward_args
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunnerParsedArgs {
+    pub conv_id: Option<String>,
+    pub initial_prompt: Option<String>,
+    pub has_continue_flag: bool,
+    pub filtered_args: Vec<String>,
+}
+
+/// Parse runner arguments for conversation id, resume flags, initial prompt, and filtered arguments
+pub fn parse_runner_args(args: &[String]) -> RunnerParsedArgs {
+    let mut conv_id = None;
+    let mut initial_prompt = None;
+    let mut has_continue_flag = false;
+    let mut filtered_args = Vec::new();
+
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--project" || arg == "-p" {
+            filtered_args.push(arg.clone());
+            i += 1;
+            if i < args.len() && !args[i].starts_with('-') {
+                filtered_args.push(args[i].clone());
+                i += 1;
+            }
+        } else if arg == "--conversation" || arg == "-c" || arg == "--continue" {
+            has_continue_flag = true;
+            filtered_args.push(arg.clone());
+            i += 1;
+            if i < args.len() && !args[i].starts_with('-') {
+                if conv_id.is_none() {
+                    conv_id = Some(args[i].clone());
+                }
+                filtered_args.push(args[i].clone());
+                i += 1;
+            }
+        } else if let Some(val) = arg.strip_prefix("--conversation=") {
+            has_continue_flag = true;
+            if conv_id.is_none() && !val.is_empty() {
+                conv_id = Some(val.to_string());
+            }
+            filtered_args.push(arg.clone());
+            i += 1;
+        } else if arg == "--resume" || arg == "-r" {
+            has_continue_flag = true;
+            i += 1;
+            if i < args.len() && !args[i].starts_with('-') {
+                if conv_id.is_none() {
+                    conv_id = Some(args[i].clone());
+                }
+                // Strip --resume / -r <id> from filtered_args so it does not get passed redundantly
+                // or mistakenly as an initial prompt
+                i += 1;
+            }
+        } else if let Some(val) = arg.strip_prefix("--resume=") {
+            has_continue_flag = true;
+            if conv_id.is_none() && !val.is_empty() {
+                conv_id = Some(val.to_string());
+            }
+            i += 1;
+        } else {
+            if !arg.starts_with('-') && initial_prompt.is_none() {
+                initial_prompt = Some(arg.clone());
+            }
+            filtered_args.push(arg.clone());
+            i += 1;
+        }
+    }
+
+    RunnerParsedArgs {
+        conv_id,
+        initial_prompt,
+        has_continue_flag,
+        filtered_args,
+    }
+}
+
 /// Internal process runner with instant prompt-based window naming and title watcher
 fn run_runner(
     project: &str,
@@ -1424,33 +1502,14 @@ fn run_runner(
 ) -> Result<()> {
     let agent_harness = crate::core::AgentHarness::from_str_loose(harness);
     let in_tmux = std::env::var("TMUX").is_ok();
-    let mut conv_id = None;
-    let mut initial_prompt = None;
-    let mut has_continue_flag = false;
 
-    // Check args for conversation id and prompt
-    let mut iter = args.iter().peekable();
-    while let Some(arg) = iter.next() {
-        if arg == "--project" || arg == "-p" {
-            if let Some(next) = iter.peek() {
-                if !next.starts_with('-') {
-                    let _ = iter.next();
-                }
-            }
-        } else if arg == "--conversation" || arg == "-c" || arg == "--continue" {
-            has_continue_flag = true;
-            if let Some(next) = iter.peek() {
-                if !next.starts_with('-') {
-                    conv_id = Some(next.to_string());
-                    let _ = iter.next();
-                }
-            }
-        } else if !arg.starts_with('-') && initial_prompt.is_none() {
-            initial_prompt = Some(arg.to_string());
-        }
-    }
+    let parsed = parse_runner_args(&args);
+    let mut conv_id = parsed.conv_id;
+    let initial_prompt = parsed.initial_prompt;
+    let has_continue_flag = parsed.has_continue_flag;
+    let filtered_args = parsed.filtered_args;
 
-    let latest_existing_id = {
+    let latest_existing_id = if agent_harness == crate::core::AgentHarness::Antigravity {
         let db = db_path();
         if db.exists() {
             rusqlite::Connection::open(&db)
@@ -1459,6 +1518,8 @@ fn run_runner(
         } else {
             None
         }
+    } else {
+        None
     };
 
     // If -c was supplied without an argument, resolve to latest_existing_id
@@ -1554,9 +1615,22 @@ fn run_runner(
 
         if let Some(ref cid) = conv_id {
             let _ = tmux::TmuxDriver::set_window_option(win_target, "@conversation_id", cid);
-            if let Some(ref win) = target_window {
+
+            // Set @conversation_id on pane as well
+            if let Ok(pane_id) = std::env::var("TMUX_PANE") {
+                let _ = Command::new("tmux")
+                    .args(["set-option", "-p", "-t", &pane_id, "@conversation_id", cid])
+                    .status();
+            } else {
+                let _ = Command::new("tmux")
+                    .args(["set-option", "-p", "@conversation_id", cid])
+                    .status();
+            }
+
+            let win_to_bind = target_window.as_deref().unwrap_or(win_target);
+            if !win_to_bind.is_empty() {
                 let _ = crate::core::TabRegistry::bind_with_harness_static(
-                    win,
+                    win_to_bind,
                     cid,
                     agent_harness.clone(),
                 );
@@ -1609,7 +1683,7 @@ fn run_runner(
         conversation_id: conv_id,
         remote_control: effective_remote_control,
         continue_flag: has_continue_flag,
-        args,
+        args: filtered_args,
         workdir: None,
         env: std::collections::HashMap::new(),
     };
@@ -1978,6 +2052,78 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
             .and_then(|v| v.as_str());
 
         if let Some(cid) = conv_id {
+            // Strategy 1: Check list-windows for matching @conversation_id (Live Tmux Options)
+            if let Ok(out) = Command::new("tmux")
+                .args(["list-windows", "-F", "#{window_id}:#{@conversation_id}"])
+                .output()
+            {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    for line in stdout.lines() {
+                        let parts: Vec<&str> = line.splitn(2, ':').collect();
+                        if parts.len() == 2 {
+                            let win_id = parts[0].trim();
+                            let win_cid = parts[1].trim();
+                            if win_cid == cid {
+                                resolved_win = Some(win_id.to_string());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Strategy 2: Check TabRegistry cross-reference map
+            if resolved_win.is_none() {
+                if let Some(reg_win) = crate::core::TabRegistry::get_window_for_conv_static(cid) {
+                    // Verify this window actually exists in tmux
+                    let exists = Command::new("tmux")
+                        .args(["display-message", "-p", "-t", &reg_win, "#{window_id}"])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            if o.status.success() {
+                                String::from_utf8(o.stdout).ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .map(|s| s.trim() == reg_win)
+                        .unwrap_or(false);
+
+                    if exists {
+                        // Check if that window's current @conversation_id is set to something else
+                        let current_cid = Command::new("tmux")
+                            .args([
+                                "display-message",
+                                "-p",
+                                "-t",
+                                &reg_win,
+                                "#{@conversation_id}",
+                            ])
+                            .output()
+                            .ok()
+                            .and_then(|o| {
+                                if o.status.success() {
+                                    String::from_utf8(o.stdout).ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .map(|s| s.trim().to_string())
+                            .unwrap_or_default();
+
+                        if !current_cid.is_empty() && current_cid != cid {
+                            let _ = crate::core::TabRegistry::unbind_window_static(&reg_win);
+                        } else {
+                            resolved_win = Some(reg_win);
+                        }
+                    } else {
+                        let _ = crate::core::TabRegistry::unbind_window_static(&reg_win);
+                    }
+                }
+            }
+
             let db = db_path();
             if db.exists() {
                 if let Ok(conn) = rusqlite::Connection::open(&db) {
@@ -2016,83 +2162,6 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
                         if let Some(t) = title_opt {
                             if !t.trim().is_empty() {
                                 resolved_clean_title = Some(sanitize_title(&t));
-                            }
-                        }
-
-                        // Strategy 1: Check list-windows for matching @conversation_id (Live Tmux Options)
-                        if let Ok(out) = Command::new("tmux")
-                            .args(["list-windows", "-F", "#{window_id}:#{@conversation_id}"])
-                            .output()
-                        {
-                            if out.status.success() {
-                                let stdout = String::from_utf8_lossy(&out.stdout);
-                                for line in stdout.lines() {
-                                    let parts: Vec<&str> = line.splitn(2, ':').collect();
-                                    if parts.len() == 2 {
-                                        let win_id = parts[0].trim();
-                                        let win_cid = parts[1].trim();
-                                        if win_cid == cid {
-                                            resolved_win = Some(win_id.to_string());
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Strategy 2: Check TabRegistry cross-reference map
-                        if resolved_win.is_none() {
-                            if let Some(reg_win) =
-                                crate::core::TabRegistry::get_window_for_conv_static(cid)
-                            {
-                                // Verify this window actually exists in tmux
-                                let exists = Command::new("tmux")
-                                    .args(["display-message", "-p", "-t", &reg_win, "#{window_id}"])
-                                    .output()
-                                    .ok()
-                                    .and_then(|o| {
-                                        if o.status.success() {
-                                            String::from_utf8(o.stdout).ok()
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .map(|s| s.trim() == reg_win)
-                                    .unwrap_or(false);
-
-                                if exists {
-                                    // Check if that window's current @conversation_id is set to something else
-                                    let current_cid = Command::new("tmux")
-                                        .args([
-                                            "display-message",
-                                            "-p",
-                                            "-t",
-                                            &reg_win,
-                                            "#{@conversation_id}",
-                                        ])
-                                        .output()
-                                        .ok()
-                                        .and_then(|o| {
-                                            if o.status.success() {
-                                                String::from_utf8(o.stdout).ok()
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .map(|s| s.trim().to_string())
-                                        .unwrap_or_default();
-
-                                    if !current_cid.is_empty() && current_cid != cid {
-                                        let _ = crate::core::TabRegistry::unbind_window_static(
-                                            &reg_win,
-                                        );
-                                    } else {
-                                        resolved_win = Some(reg_win);
-                                    }
-                                } else {
-                                    let _ =
-                                        crate::core::TabRegistry::unbind_window_static(&reg_win);
-                                }
                             }
                         }
 
@@ -2193,17 +2262,13 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
                                 }
                             }
                         }
-
-                        if let Some(ref target_win) = resolved_win {
-                            let _ = crate::core::TabRegistry::bind_static(target_win, cid);
-                            let _ = tmux::TmuxDriver::set_window_option(
-                                target_win,
-                                "@conversation_id",
-                                cid,
-                            );
-                        }
                     }
                 }
+            }
+
+            if let Some(ref target_win) = resolved_win {
+                let _ = crate::core::TabRegistry::bind_static(target_win, cid);
+                let _ = tmux::TmuxDriver::set_window_option(target_win, "@conversation_id", cid);
             }
         }
     }
@@ -2247,6 +2312,7 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
 
     if let Some(target_win) = target_win_opt {
         let _ = tmux::TmuxDriver::set_window_option(&target_win, "@running", running_val);
+        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@claude_running", running_val);
         if running_val == "0" {
             let _ = tmux::TmuxDriver::set_window_option(&target_win, "@agy_running", "0");
         } else {
@@ -2692,21 +2758,74 @@ pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
     }
 }
 
+/// Find active Claude Code session ID from ~/.claude/sessions/ by PID or tmux window/pane identifier
+fn find_claude_session_id(pane_pid: &str, window_id: &str, pane_id: &str) -> Option<String> {
+    let home = dirs::home_dir()?;
+    let sessions_dir = home.join(".claude").join("sessions");
+    if !sessions_dir.exists() {
+        return None;
+    }
+
+    // 1. Direct match by pane_pid (e.g. ~/.claude/sessions/{pane_pid}.json)
+    if !pane_pid.is_empty() {
+        let direct_path = sessions_dir.join(format!("{}.json", pane_pid));
+        if direct_path.exists() {
+            if let Ok(content) = fs::read_to_string(&direct_path) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(sid) = v.get("sessionId").and_then(|s| s.as_str()) {
+                        if !sid.is_empty() {
+                            return Some(sid.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Scan sessions directory for matching tmux window_id or pane_id in metadata
+    if let Ok(entries) = fs::read_dir(&sessions_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(tmux_val) = v.get("tmux").and_then(|t| t.as_str()) {
+                            if (!window_id.is_empty() && tmux_val.contains(window_id))
+                                || (!pane_id.is_empty() && tmux_val.contains(pane_id))
+                            {
+                                if let Some(sid) = v.get("sessionId").and_then(|s| s.as_str()) {
+                                    if !sid.is_empty() {
+                                        return Some(sid.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Restart the harness running in the active (or target) pane in-place
 pub fn run_restart(target: Option<String>) -> Result<()> {
     // 1. Resolve target pane: target, $TMUX_PANE, or default
     let target_str = match target {
         Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
-        _ => std::env::var("TMUX_PANE").ok().filter(|p| !p.trim().is_empty()),
+        _ => std::env::var("TMUX_PANE")
+            .ok()
+            .filter(|p| !p.trim().is_empty()),
     };
 
-    // 2. Query pane details via tmux in a single call
+    // 2. Query pane details via tmux in a single call including #{pane_pid}
     let mut disp_cmd = Command::new("tmux");
     disp_cmd.args(["display-message", "-p"]);
     if let Some(ref t) = target_str {
         disp_cmd.args(["-t", t]);
     }
-    disp_cmd.arg("#{pane_id}|#{window_id}|#{window_name}|#{pane_current_path}|#{@harness}|#{@conversation_id}|#{@ax_project}|#{@remote_control}|#{@user_renamed}|#{pane_current_command}|#{session_name}");
+    disp_cmd.arg("#{pane_id}|#{window_id}|#{window_name}|#{pane_current_path}|#{@harness}|#{@conversation_id}|#{@ax_project}|#{@remote_control}|#{@user_renamed}|#{pane_current_command}|#{session_name}|#{pane_pid}");
 
     let disp_out = disp_cmd
         .output()
@@ -2736,8 +2855,9 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
     let raw_user_renamed = parts[8].trim();
     let pane_current_cmd = parts[9].trim();
     let session_name = parts.get(10).copied().unwrap_or("").trim();
+    let pane_pid = parts.get(11).copied().unwrap_or("").trim().to_string();
 
-    // 3. Infer harness if empty from pane_current_command or TabRegistry
+    // 3. Infer harness if empty from pane_current_command, window_name, or TabRegistry
     let mut harness = if !raw_harness.is_empty() {
         Some(crate::core::AgentHarness::from_str_loose(raw_harness))
     } else {
@@ -2752,26 +2872,53 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
 
     if harness.is_none() {
         let cmd_lower = pane_current_cmd.to_lowercase();
-        harness = Some(match cmd_lower.as_str() {
-            c if c.contains("claude") => crate::core::AgentHarness::ClaudeCode,
-            c if c.contains("agy") || c.contains("antigravity") => {
+        let name_lower = window_name.to_lowercase();
+        harness = Some(match () {
+            _ if cmd_lower.contains("claude") || name_lower.contains("claude") => {
+                crate::core::AgentHarness::ClaudeCode
+            }
+            _ if cmd_lower.contains("agy")
+                || cmd_lower.contains("antigravity")
+                || name_lower.contains("agy")
+                || name_lower.contains("antigravity") =>
+            {
                 crate::core::AgentHarness::Antigravity
             }
-            c if c.contains("opencode") => crate::core::AgentHarness::OpenCode,
-            c if c.contains("codex") => crate::core::AgentHarness::Codex,
+            _ if cmd_lower.contains("opencode") || name_lower.contains("opencode") => {
+                crate::core::AgentHarness::OpenCode
+            }
+            _ if cmd_lower.contains("codex") || name_lower.contains("codex") => {
+                crate::core::AgentHarness::Codex
+            }
             _ => crate::core::AgentHarness::PlainTerminal,
         });
     }
     let harness = harness.unwrap_or(crate::core::AgentHarness::PlainTerminal);
 
-    // 4. Infer conversation ID if empty from TabRegistry
-    let conv_id = if !raw_conv_id.is_empty() {
-        Some(raw_conv_id.to_string())
-    } else {
-        crate::core::TabRegistry::get_conv_for_window_static(&window_id)
-    };
+    if raw_harness.is_empty() {
+        let _ = Command::new("tmux")
+            .args([
+                "set-option",
+                "-w",
+                "-t",
+                &window_id,
+                "@harness",
+                harness.as_str(),
+            ])
+            .status();
+        let _ = Command::new("tmux")
+            .args([
+                "set-option",
+                "-p",
+                "-t",
+                &pane_id,
+                "@harness",
+                harness.as_str(),
+            ])
+            .status();
+    }
 
-    // 5. Infer project from @ax_project or session name stripped of agy-
+    // 4. Infer project from @ax_project or session name stripped of agy-
     let project = if !raw_ax_project.is_empty() {
         raw_ax_project.to_string()
     } else if !session_name.is_empty() {
@@ -2785,6 +2932,46 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
             .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
             .unwrap_or_else(|| "default".to_string())
     };
+
+    // 5. Infer conversation ID if empty
+    let mut conv_id = if !raw_conv_id.is_empty() && raw_conv_id != "-" {
+        Some(raw_conv_id.to_string())
+    } else {
+        crate::core::TabRegistry::get_conv_for_window_static(&window_id)
+    };
+
+    if conv_id.is_none() {
+        if harness == crate::core::AgentHarness::ClaudeCode {
+            if let Some(sid) = find_claude_session_id(&pane_pid, &window_id, &pane_id) {
+                let _ = Command::new("tmux")
+                    .args([
+                        "set-option",
+                        "-w",
+                        "-t",
+                        &window_id,
+                        "@conversation_id",
+                        &sid,
+                    ])
+                    .status();
+                let _ = Command::new("tmux")
+                    .args(["set-option", "-p", "-t", &pane_id, "@conversation_id", &sid])
+                    .status();
+                let _ = crate::core::TabRegistry::bind_with_harness_static(
+                    &window_id,
+                    &sid,
+                    crate::core::AgentHarness::ClaudeCode,
+                );
+                conv_id = Some(sid);
+            }
+        } else if harness == crate::core::AgentHarness::Antigravity {
+            let db = crate::db_path();
+            if db.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db) {
+                    conv_id = crate::core::session::latest_conversation_id(&conn, Some(&project));
+                }
+            }
+        }
+    }
 
     // 6. Build respawn command
     let cmd = if matches!(harness, crate::core::AgentHarness::PlainTerminal) {
@@ -2839,20 +3026,61 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Install or update ax tab sync lifecycle hook in ~/.gemini/config/hooks.json
-pub fn ensure_hook_installed() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Cannot determine home directory")?;
-    let config_dir = home.join(".gemini/config");
-    fs::create_dir_all(&config_dir)?;
-    let hook_path = config_dir.join("hooks.json");
-
-    let mut root = if hook_path.exists() {
-        let content = fs::read_to_string(&hook_path).unwrap_or_default();
-        serde_json::from_str::<serde_json::Value>(&content)
-            .unwrap_or_else(|_| serde_json::json!({}))
+/// Install or update ax tab sync lifecycle hook at a specific path
+pub fn ensure_hook_installed_at(hook_path: &Path) -> Result<PathBuf> {
+    let (canonical_path, target_dir) = if let Ok(meta) = fs::symlink_metadata(hook_path) {
+        if meta.file_type().is_symlink() {
+            let canon = fs::canonicalize(hook_path).unwrap_or_else(|_| hook_path.to_path_buf());
+            let parent = canon.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                hook_path
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| PathBuf::from("."))
+            });
+            (canon, parent)
+        } else {
+            let parent = hook_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."));
+            (hook_path.to_path_buf(), parent)
+        }
     } else {
-        serde_json::json!({})
+        let parent = hook_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        (hook_path.to_path_buf(), parent)
     };
+
+    fs::create_dir_all(&target_dir)?;
+
+    let (mut root, exists) = if canonical_path.exists() {
+        let content = fs::read_to_string(&canonical_path)?;
+        let parsed = match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(val) => val,
+            Err(e) => {
+                let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
+                let quarantine_path = target_dir.join(format!("hooks.json.corrupt.{}.bak", ts));
+                let _ = fs::copy(&canonical_path, &quarantine_path);
+                bail!(
+                    "hooks.json is invalid JSON ({}). Corrupted file preserved at {:?}. Refusing to overwrite.",
+                    e,
+                    quarantine_path
+                );
+            }
+        };
+        (parsed, true)
+    } else {
+        (serde_json::json!({}), false)
+    };
+
+    if exists {
+        let mut os_str = canonical_path.as_os_str().to_os_string();
+        os_str.push(".bak");
+        let bak_path = PathBuf::from(os_str);
+        let _ = fs::copy(&canonical_path, &bak_path);
+    }
 
     if !root.is_object() {
         root = serde_json::json!({});
@@ -2860,6 +3088,13 @@ pub fn ensure_hook_installed() -> Result<PathBuf> {
 
     let hook_entry = serde_json::json!({
         "enabled": true,
+        "PreInvocation": [
+            {
+                "type": "command",
+                "command": "ax hook --running 1",
+                "timeout": 5
+            }
+        ],
         "Stop": [
             {
                 "type": "command",
@@ -2875,15 +3110,180 @@ pub fn ensure_hook_installed() -> Result<PathBuf> {
     }
 
     let formatted = serde_json::to_string_pretty(&root)?;
-    fs::write(&hook_path, formatted)?;
+    let tmp_path = target_dir.join(format!(".hooks.json.tmp.{}", std::process::id()));
 
-    Ok(hook_path)
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(formatted.as_bytes())?;
+        file.flush()?;
+        file.sync_all()?;
+    }
+
+    fs::rename(&tmp_path, &canonical_path)?;
+    Ok(canonical_path)
 }
 
-/// CLI command to install ax lifecycle hook to ~/.gemini/config/hooks.json
+/// Install or update ax tab sync lifecycle hook in ~/.gemini/config/hooks.json
+pub fn ensure_hook_installed() -> Result<PathBuf> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let config_dir = home.join(".gemini/config");
+    let hook_path = config_dir.join("hooks.json");
+    ensure_hook_installed_at(&hook_path)
+}
+
+/// Install or update Claude Code lifecycle hooks at a specific settings.json path
+pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf> {
+    let (canonical_path, target_dir) = if let Ok(meta) = fs::symlink_metadata(settings_path) {
+        if meta.file_type().is_symlink() {
+            let canon =
+                fs::canonicalize(settings_path).unwrap_or_else(|_| settings_path.to_path_buf());
+            let parent = canon.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                settings_path
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| PathBuf::from("."))
+            });
+            (canon, parent)
+        } else {
+            let parent = settings_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."));
+            (settings_path.to_path_buf(), parent)
+        }
+    } else {
+        let parent = settings_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        (settings_path.to_path_buf(), parent)
+    };
+
+    fs::create_dir_all(&target_dir)?;
+
+    let (mut root, exists) = if canonical_path.exists() {
+        let content = fs::read_to_string(&canonical_path)?;
+        let parsed = match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(val) => val,
+            Err(e) => {
+                let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
+                let quarantine_path = target_dir.join(format!("settings.json.corrupt.{}.bak", ts));
+                let _ = fs::copy(&canonical_path, &quarantine_path);
+                bail!(
+                    "settings.json is invalid JSON ({}). Corrupted file preserved at {:?}. Refusing to overwrite.",
+                    e,
+                    quarantine_path
+                );
+            }
+        };
+        (parsed, true)
+    } else {
+        (serde_json::json!({}), false)
+    };
+
+    if exists {
+        let mut os_str = canonical_path.as_os_str().to_os_string();
+        os_str.push(".bak");
+        let bak_path = PathBuf::from(os_str);
+        let _ = fs::copy(&canonical_path, &bak_path);
+    }
+
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
+
+    if let Some(root_obj) = root.as_object_mut() {
+        let hooks_val = root_obj
+            .entry("hooks")
+            .or_insert_with(|| serde_json::json!({}));
+        if !hooks_val.is_object() {
+            *hooks_val = serde_json::json!({});
+        }
+        if let Some(hooks_obj) = hooks_val.as_object_mut() {
+            let merge_hook_event = |event_arr: &mut Vec<serde_json::Value>, target_cmd: &str| {
+                let already_present = event_arr.iter().any(|item| {
+                    if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
+                        if cmd == target_cmd {
+                            return true;
+                        }
+                    }
+                    if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
+                        if sub_hooks.iter().any(|sub| {
+                            sub.get("command").and_then(|c| c.as_str()) == Some(target_cmd)
+                        }) {
+                            return true;
+                        }
+                    }
+                    false
+                });
+
+                if !already_present {
+                    let hook_entry = serde_json::json!({
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": target_cmd
+                            }
+                        ]
+                    });
+                    event_arr.push(hook_entry);
+                }
+            };
+
+            let submit_val = hooks_obj
+                .entry("UserPromptSubmit")
+                .or_insert_with(|| serde_json::json!([]));
+            if !submit_val.is_array() {
+                *submit_val = serde_json::json!([]);
+            }
+            if let Some(submit_arr) = submit_val.as_array_mut() {
+                merge_hook_event(submit_arr, "ax hook --running 1");
+            }
+
+            let stop_val = hooks_obj
+                .entry("Stop")
+                .or_insert_with(|| serde_json::json!([]));
+            if !stop_val.is_array() {
+                *stop_val = serde_json::json!([]);
+            }
+            if let Some(stop_arr) = stop_val.as_array_mut() {
+                merge_hook_event(stop_arr, "ax hook --running 0");
+            }
+        }
+    }
+
+    let formatted = serde_json::to_string_pretty(&root)?;
+    let tmp_path = target_dir.join(format!(".settings.json.tmp.{}", std::process::id()));
+
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(formatted.as_bytes())?;
+        file.flush()?;
+        file.sync_all()?;
+    }
+
+    fs::rename(&tmp_path, &canonical_path)?;
+    Ok(canonical_path)
+}
+
+/// Install or update Claude Code lifecycle hooks in ~/.claude/settings.json
+pub fn ensure_claude_hooks_installed() -> Result<PathBuf> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let claude_dir = home.join(".claude");
+    let settings_path = claude_dir.join("settings.json");
+    ensure_claude_hooks_installed_at(&settings_path)
+}
+
+/// CLI command to install ax lifecycle hook to ~/.gemini/config/hooks.json and ~/.claude/settings.json
 pub fn run_install() -> Result<()> {
     let hook_path = ensure_hook_installed()?;
     println!("Installed ax hook to {}", hook_path.display());
+    match ensure_claude_hooks_installed() {
+        Ok(claude_path) => println!("Installed ax Claude hooks to {}", claude_path.display()),
+        Err(e) => eprintln!("Warning: failed to install Claude hooks: {}", e),
+    }
     Ok(())
 }
 
@@ -3045,6 +3445,103 @@ mod tests {
     }
 
     #[test]
+    fn test_build_agy_args_strips_resume_and_short_flags() {
+        let args = vec!["--resume".to_string(), "conv-uuid-resume".to_string()];
+        let res = build_agy_args("doppelganger", &args, Some("conv-uuid-resume"), true, false);
+        assert_eq!(
+            res,
+            vec![
+                "--project",
+                "doppelganger",
+                "--conversation",
+                "conv-uuid-resume"
+            ]
+        );
+
+        let args_short = vec!["-r".to_string(), "conv-uuid-short".to_string()];
+        let res_short = build_agy_args(
+            "doppelganger",
+            &args_short,
+            Some("conv-uuid-short"),
+            true,
+            false,
+        );
+        assert_eq!(
+            res_short,
+            vec![
+                "--project",
+                "doppelganger",
+                "--conversation",
+                "conv-uuid-short"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_runner_args_resume_long_flag() {
+        let args = vec![
+            "--resume".to_string(),
+            "conv-12345".to_string(),
+            "hello world".to_string(),
+        ];
+        let parsed = parse_runner_args(&args);
+        assert_eq!(parsed.conv_id.as_deref(), Some("conv-12345"));
+        assert!(parsed.has_continue_flag);
+        assert_eq!(parsed.initial_prompt.as_deref(), Some("hello world"));
+        assert_eq!(parsed.filtered_args, vec!["hello world"]);
+    }
+
+    #[test]
+    fn test_parse_runner_args_resume_short_flag() {
+        let args = vec!["-r".to_string(), "conv-67890".to_string()];
+        let parsed = parse_runner_args(&args);
+        assert_eq!(parsed.conv_id.as_deref(), Some("conv-67890"));
+        assert!(parsed.has_continue_flag);
+        assert_eq!(parsed.initial_prompt, None);
+        assert!(parsed.filtered_args.is_empty());
+    }
+
+    #[test]
+    fn test_parse_runner_args_resume_equals() {
+        let args = vec![
+            "--resume=conv-eq-999".to_string(),
+            "explain code".to_string(),
+        ];
+        let parsed = parse_runner_args(&args);
+        assert_eq!(parsed.conv_id.as_deref(), Some("conv-eq-999"));
+        assert!(parsed.has_continue_flag);
+        assert_eq!(parsed.initial_prompt.as_deref(), Some("explain code"));
+        assert_eq!(parsed.filtered_args, vec!["explain code"]);
+    }
+
+    #[test]
+    fn test_parse_runner_args_bare_resume() {
+        let args = vec!["--resume".to_string()];
+        let parsed = parse_runner_args(&args);
+        assert_eq!(parsed.conv_id, None);
+        assert!(parsed.has_continue_flag);
+        assert_eq!(parsed.initial_prompt, None);
+        assert!(parsed.filtered_args.is_empty());
+    }
+
+    #[test]
+    fn test_parse_runner_args_conversation_flag() {
+        let args = vec![
+            "--conversation".to_string(),
+            "conv-uuid-abc".to_string(),
+            "some prompt".to_string(),
+        ];
+        let parsed = parse_runner_args(&args);
+        assert_eq!(parsed.conv_id.as_deref(), Some("conv-uuid-abc"));
+        assert!(parsed.has_continue_flag);
+        assert_eq!(parsed.initial_prompt.as_deref(), Some("some prompt"));
+        assert_eq!(
+            parsed.filtered_args,
+            vec!["--conversation", "conv-uuid-abc", "some prompt"]
+        );
+    }
+
+    #[test]
     fn test_ensure_hook_installed_and_json_format() {
         let temp_dir = tempfile::tempdir().unwrap();
         let config_dir = temp_dir.path().join(".gemini/config");
@@ -3055,25 +3552,9 @@ mod tests {
         let initial_json = r#"{ "other-hook": { "enabled": true } }"#;
         std::fs::write(&hook_path, initial_json).unwrap();
 
-        // Simulate logic
-        let content = std::fs::read_to_string(&hook_path).unwrap();
-        let mut root: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let hook_entry = serde_json::json!({
-            "enabled": true,
-            "Stop": [
-                {
-                    "type": "command",
-                    "command": "ax hook",
-                    "timeout": 5
-                }
-            ]
-        });
-        if let Some(obj) = root.as_object_mut() {
-            obj.remove("agymux-tab-sync");
-            obj.insert("ax-tab-sync".to_string(), hook_entry);
-        }
-        let formatted = serde_json::to_string_pretty(&root).unwrap();
-        std::fs::write(&hook_path, formatted).unwrap();
+        // Run real function directly
+        let res_path = ensure_hook_installed_at(&hook_path).unwrap();
+        assert_eq!(res_path, hook_path);
 
         let read_back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hook_path).unwrap()).unwrap();
@@ -3081,6 +3562,215 @@ mod tests {
         assert!(read_back.get("ax-tab-sync").is_some());
         assert_eq!(read_back["ax-tab-sync"]["enabled"], true);
         assert_eq!(read_back["ax-tab-sync"]["Stop"][0]["command"], "ax hook");
+    }
+
+    #[test]
+    fn test_ensure_hook_installed_invalid_json_quarantine() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let hook_path = temp_dir.path().join("hooks.json");
+
+        let corrupt_content = r#"{ "incomplete_json": true, "#;
+        std::fs::write(&hook_path, corrupt_content).unwrap();
+
+        let res = ensure_hook_installed_at(&hook_path);
+        assert!(res.is_err());
+        let err_str = res.unwrap_err().to_string();
+        assert!(err_str.contains("hooks.json is invalid JSON"));
+        assert!(err_str.contains("Refusing to overwrite"));
+
+        // Verify original file is intact and not truncated
+        let orig = std::fs::read_to_string(&hook_path).unwrap();
+        assert_eq!(orig, corrupt_content);
+
+        // Verify quarantine file exists
+        let mut found_quarantine = false;
+        for entry in std::fs::read_dir(temp_dir.path()).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("hooks.json.corrupt.") && name.ends_with(".bak") {
+                found_quarantine = true;
+                let quaran_content = std::fs::read_to_string(entry.path()).unwrap();
+                assert_eq!(quaran_content, corrupt_content);
+            }
+        }
+        assert!(found_quarantine, "Quarantine backup file was not created");
+    }
+
+    #[test]
+    fn test_ensure_hook_installed_success_and_backup() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let hook_path = temp_dir.path().join("hooks.json");
+
+        let initial = r#"{ "my-hook": { "enabled": true } }"#;
+        std::fs::write(&hook_path, initial).unwrap();
+
+        let res = ensure_hook_installed_at(&hook_path);
+        assert!(res.is_ok());
+
+        // Verify backup copy
+        let bak_path = temp_dir.path().join("hooks.json.bak");
+        assert!(bak_path.exists());
+        assert_eq!(std::fs::read_to_string(&bak_path).unwrap(), initial);
+
+        // Verify updated file
+        let updated: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&hook_path).unwrap()).unwrap();
+        assert!(updated.get("my-hook").is_some());
+        assert!(updated.get("ax-tab-sync").is_some());
+    }
+
+    #[test]
+    fn test_ensure_hook_installed_preserves_key_order() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let hook_path = temp_dir.path().join("hooks.json");
+
+        // Write keys in non-alphabetical order: zebra, alpha, middle
+        let initial = "{\n  \"zebra\": 1,\n  \"alpha\": 2,\n  \"middle\": 3\n}";
+        std::fs::write(&hook_path, initial).unwrap();
+
+        let res = ensure_hook_installed_at(&hook_path);
+        assert!(res.is_ok());
+
+        let raw_str = std::fs::read_to_string(&hook_path).unwrap();
+        let idx_z = raw_str.find("\"zebra\"").unwrap();
+        let idx_a = raw_str.find("\"alpha\"").unwrap();
+        let idx_m = raw_str.find("\"middle\"").unwrap();
+        let idx_ax = raw_str.find("\"ax-tab-sync\"").unwrap();
+
+        assert!(idx_z < idx_a);
+        assert!(idx_a < idx_m);
+        assert!(idx_m < idx_ax);
+
+        let parsed: serde_json::Value = serde_json::from_str(&raw_str).unwrap();
+        let keys: Vec<&str> = parsed
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(keys, vec!["zebra", "alpha", "middle", "ax-tab-sync"]);
+    }
+
+    #[test]
+    fn test_ensure_hook_installed_symlink_handling() {
+        use std::os::unix::fs::symlink;
+
+        let target_dir = tempfile::tempdir().unwrap();
+        let link_dir = tempfile::tempdir().unwrap();
+
+        let real_path = target_dir.path().join("canonical_hooks.json");
+        let initial = r#"{ "real-hook": true }"#;
+        std::fs::write(&real_path, initial).unwrap();
+
+        let symlink_path = link_dir.path().join("hooks.json");
+        symlink(&real_path, &symlink_path).unwrap();
+
+        assert!(std::fs::symlink_metadata(&symlink_path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        let res = ensure_hook_installed_at(&symlink_path);
+        assert!(res.is_ok());
+
+        // Symlink must remain a symlink
+        assert!(std::fs::symlink_metadata(&symlink_path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        // Canonical target must be updated
+        let real_str = std::fs::read_to_string(&real_path).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&real_str).unwrap();
+        assert!(val.get("real-hook").is_some());
+        assert!(val.get("ax-tab-sync").is_some());
+
+        // Backup must exist alongside the canonical target
+        let real_bak = target_dir.path().join("canonical_hooks.json.bak");
+        assert!(real_bak.exists());
+        assert_eq!(std::fs::read_to_string(&real_bak).unwrap(), initial);
+    }
+
+    #[test]
+    fn test_ensure_claude_hooks_installed_and_json_format() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+
+        // Write existing dummy settings with permissions and custom fields
+        let initial_json = r#"{
+  "permissions": { "allow": ["Bash(git status)"] },
+  "outputStyle": "Concise"
+}"#;
+        std::fs::write(&settings_path, initial_json).unwrap();
+
+        let res_path = ensure_claude_hooks_installed_at(&settings_path).unwrap();
+        assert_eq!(res_path, settings_path);
+
+        let read_back: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(read_back["outputStyle"], "Concise");
+        assert_eq!(read_back["permissions"]["allow"][0], "Bash(git status)");
+
+        // Verify hooks
+        let hooks = &read_back["hooks"];
+        assert!(hooks.is_object());
+        let submit_cmd = &hooks["UserPromptSubmit"][0]["hooks"][0]["command"];
+        assert_eq!(submit_cmd, "ax hook --running 1");
+        let stop_cmd = &hooks["Stop"][0]["hooks"][0]["command"];
+        assert_eq!(stop_cmd, "ax hook --running 0");
+    }
+
+    #[test]
+    fn test_ensure_claude_hooks_idempotent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+
+        std::fs::write(&settings_path, r#"{ "model": "sonnet" }"#).unwrap();
+
+        // Run twice
+        ensure_claude_hooks_installed_at(&settings_path).unwrap();
+        ensure_claude_hooks_installed_at(&settings_path).unwrap();
+
+        let read_back: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(
+            read_back["hooks"]["UserPromptSubmit"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(read_back["hooks"]["Stop"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_ensure_claude_hooks_invalid_json_quarantine() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+
+        let corrupt_content = r#"{ "incomplete_settings": true, "#;
+        std::fs::write(&settings_path, corrupt_content).unwrap();
+
+        let res = ensure_claude_hooks_installed_at(&settings_path);
+        assert!(res.is_err());
+        let err_str = res.unwrap_err().to_string();
+        assert!(err_str.contains("settings.json is invalid JSON"));
+        assert!(err_str.contains("Refusing to overwrite"));
+
+        let orig = std::fs::read_to_string(&settings_path).unwrap();
+        assert_eq!(orig, corrupt_content);
+
+        let mut found_quarantine = false;
+        for entry in std::fs::read_dir(temp_dir.path()).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("settings.json.corrupt.") && name.ends_with(".bak") {
+                found_quarantine = true;
+                assert_eq!(
+                    std::fs::read_to_string(entry.path()).unwrap(),
+                    corrupt_content
+                );
+            }
+        }
+        assert!(found_quarantine, "Quarantine file was not created");
     }
 
     #[test]
@@ -3140,5 +3830,29 @@ mod tests {
     fn test_format_git_status_nonexistent() {
         let nonexistent = PathBuf::from("/nonexistent/directory/path/12345");
         assert!(format_git_status(&nonexistent).is_none());
+    }
+
+    #[test]
+    fn test_find_claude_session_id_parsing() {
+        let temp_dir = std::env::temp_dir().join(format!("ax-test-claude-{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let sample_json =
+            r#"{"pid":99999,"sessionId":"test-session-uuid-1234","tmux":"agy-test:@10.%1"}"#;
+        let file_path = temp_dir.join("99999.json");
+        fs::write(&file_path, sample_json).unwrap();
+
+        // Verify JSON parse directly
+        let content = fs::read_to_string(&file_path).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            val.get("sessionId").and_then(|s| s.as_str()),
+            Some("test-session-uuid-1234")
+        );
+        assert_eq!(
+            val.get("tmux").and_then(|s| s.as_str()),
+            Some("agy-test:@10.%1")
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }
