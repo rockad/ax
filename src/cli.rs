@@ -168,6 +168,12 @@ pub enum Commands {
         action: Option<SessionAction>,
     },
 
+    /// Restart the harness running in the active (or target) pane in-place
+    Restart {
+        /// Optional pane or window target (e.g. %1, :2, @3)
+        target: Option<String>,
+    },
+
     /// Rename active tab and synchronize title to backing harness conversation
     #[command(alias = "rename-tab")]
     Rename {
@@ -675,5 +681,20 @@ mod tests {
         let cli_restore = Cli::try_parse_from(["ax", "--restore"]).expect("parsing succeeds");
         assert!(!cli_restore.fresh);
         assert!(cli_restore.restore);
+    }
+
+    #[test]
+    fn test_cli_restart_command() {
+        let cli_default = Cli::try_parse_from(["ax", "restart"]).expect("parsing succeeds");
+        match cli_default.command {
+            Some(Commands::Restart { target }) => assert_eq!(target, None),
+            other => panic!("expected Restart default, got {:?}", other),
+        }
+
+        let cli_target = Cli::try_parse_from(["ax", "restart", "%2"]).expect("parsing succeeds");
+        match cli_target.command {
+            Some(Commands::Restart { target }) => assert_eq!(target.as_deref(), Some("%2")),
+            other => panic!("expected Restart %2, got {:?}", other),
+        }
     }
 }

@@ -47,6 +47,7 @@ pub enum PaletteAction {
     UnsplitPane,
     RestoreSession,
     SessionHistory,
+    RestartHarness,
 }
 
 #[derive(Debug, Clone)]
@@ -225,6 +226,12 @@ impl PaletteItem {
             PaletteItem {
                 action: PaletteAction::ReloadConfig,
                 title: "Reload ax Configuration",
+                shortcut: "ax reload",
+                mnemonic: None,
+            },
+            PaletteItem {
+                action: PaletteAction::RestartHarness,
+                title: "Restart Active Tab Harness",
                 shortcut: "Ctrl+Space R / К",
                 mnemonic: Some('R'),
             },
@@ -441,6 +448,13 @@ impl PaletteState {
                         "history".contains(&q)
                             || "snapshots".contains(&q)
                             || "session history".contains(&q)
+                    }
+                    PaletteAction::RestartHarness => {
+                        "restart".contains(&q)
+                            || "harness".contains(&q)
+                            || "respawn".contains(&q)
+                            || q == "R"
+                            || q == "К"
                     }
                     _ => false,
                 }
@@ -1036,6 +1050,11 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "ax session history",
                 ])
                 .status();
+        }
+        PaletteAction::RestartHarness => {
+            if let Err(e) = crate::run_restart(None) {
+                eprintln!("Failed to restart harness: {}", e);
+            }
         }
     }
     Ok(())

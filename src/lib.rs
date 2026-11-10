@@ -352,6 +352,10 @@ pub fn run() -> Result<()> {
             run_reload(&session_name, &config)?;
         }
 
+        Some(Commands::Restart { target }) => {
+            run_restart(target)?;
+        }
+
         Some(Commands::Hook { running, start }) => {
             run_hook(running.as_deref(), start)?;
         }
@@ -2686,6 +2690,153 @@ pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
     } else {
         bail!("Failed to reload tmux configuration from {:?}", conf_path);
     }
+}
+
+/// Restart the harness running in the active (or target) pane in-place
+pub fn run_restart(target: Option<String>) -> Result<()> {
+    // 1. Resolve target pane: target, $TMUX_PANE, or default
+    let target_str = match target {
+        Some(ref t) if !t.trim().is_empty() => Some(t.trim().to_string()),
+        _ => std::env::var("TMUX_PANE").ok().filter(|p| !p.trim().is_empty()),
+    };
+
+    // 2. Query pane details via tmux in a single call
+    let mut disp_cmd = Command::new("tmux");
+    disp_cmd.args(["display-message", "-p"]);
+    if let Some(ref t) = target_str {
+        disp_cmd.args(["-t", t]);
+    }
+    disp_cmd.arg("#{pane_id}|#{window_id}|#{window_name}|#{pane_current_path}|#{@harness}|#{@conversation_id}|#{@ax_project}|#{@remote_control}|#{@user_renamed}|#{pane_current_command}|#{session_name}");
+
+    let disp_out = disp_cmd
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to run tmux display-message: {}", e))?;
+    if !disp_out.status.success() {
+        let err_msg = String::from_utf8_lossy(&disp_out.stderr);
+        bail!("tmux display-message failed: {}", err_msg.trim());
+    }
+
+    let out_str = String::from_utf8_lossy(&disp_out.stdout);
+    let parts: Vec<&str> = out_str.trim().split('|').collect();
+    if parts.len() < 10 {
+        bail!(
+            "Invalid response from tmux display-message: '{}'",
+            out_str.trim()
+        );
+    }
+
+    let pane_id = parts[0].trim().to_string();
+    let window_id = parts[1].trim().to_string();
+    let window_name = parts[2].trim().to_string();
+    let pane_current_path = parts[3].trim().to_string();
+    let raw_harness = parts[4].trim();
+    let raw_conv_id = parts[5].trim();
+    let raw_ax_project = parts[6].trim();
+    let raw_remote_control = parts[7].trim();
+    let raw_user_renamed = parts[8].trim();
+    let pane_current_cmd = parts[9].trim();
+    let session_name = parts.get(10).copied().unwrap_or("").trim();
+
+    // 3. Infer harness if empty from pane_current_command or TabRegistry
+    let mut harness = if !raw_harness.is_empty() {
+        Some(crate::core::AgentHarness::from_str_loose(raw_harness))
+    } else {
+        None
+    };
+
+    if harness.is_none() {
+        if let Some(h) = crate::core::TabRegistry::get_harness_static(&window_id) {
+            harness = Some(h);
+        }
+    }
+
+    if harness.is_none() {
+        let cmd_lower = pane_current_cmd.to_lowercase();
+        harness = Some(match cmd_lower.as_str() {
+            c if c.contains("claude") => crate::core::AgentHarness::ClaudeCode,
+            c if c.contains("agy") || c.contains("antigravity") => {
+                crate::core::AgentHarness::Antigravity
+            }
+            c if c.contains("opencode") => crate::core::AgentHarness::OpenCode,
+            c if c.contains("codex") => crate::core::AgentHarness::Codex,
+            _ => crate::core::AgentHarness::PlainTerminal,
+        });
+    }
+    let harness = harness.unwrap_or(crate::core::AgentHarness::PlainTerminal);
+
+    // 4. Infer conversation ID if empty from TabRegistry
+    let conv_id = if !raw_conv_id.is_empty() {
+        Some(raw_conv_id.to_string())
+    } else {
+        crate::core::TabRegistry::get_conv_for_window_static(&window_id)
+    };
+
+    // 5. Infer project from @ax_project or session name stripped of agy-
+    let project = if !raw_ax_project.is_empty() {
+        raw_ax_project.to_string()
+    } else if !session_name.is_empty() {
+        session_name
+            .strip_prefix("agy-")
+            .unwrap_or(session_name)
+            .to_string()
+    } else {
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "default".to_string())
+    };
+
+    // 6. Build respawn command
+    let cmd = if matches!(harness, crate::core::AgentHarness::PlainTerminal) {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+    } else {
+        let mut c = format!("ax run -H {} --project '{}'", harness.as_str(), project);
+        if let Some(ref cid) = conv_id {
+            if !cid.is_empty() {
+                c.push_str(&format!(" --conversation '{}'", cid));
+            }
+        }
+        if raw_user_renamed == "1" && !window_name.is_empty() {
+            c.push_str(&format!(" -n '{}'", window_name));
+        }
+        if raw_remote_control == "1" {
+            c.push_str(" --remote-control");
+        }
+        c
+    };
+
+    // 7. Execute tmux respawn-pane -k -t <pane_id> -c <current_path> "<cmd>"
+    let mut respawn = Command::new("tmux");
+    respawn.args(["respawn-pane", "-k", "-t", &pane_id]);
+    if !pane_current_path.is_empty() {
+        respawn.args(["-c", &pane_current_path]);
+    }
+    respawn.arg(&cmd);
+
+    let status = respawn
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to execute tmux respawn-pane: {}", e))?;
+    if !status.success() {
+        bail!("tmux respawn-pane failed with exit status: {:?}", status);
+    }
+
+    // 8. Toast in tmux and stdout
+    let toast = format!(
+        "ax: Restarted {} in tab '{}'",
+        harness.as_str(),
+        window_name
+    );
+    let _ = Command::new("tmux")
+        .args(["display-message", &toast])
+        .status();
+
+    println!(
+        "Restarted {} in tab '{}' (pane {})",
+        harness.as_str(),
+        window_name,
+        pane_id
+    );
+    Ok(())
 }
 
 /// Install or update ax tab sync lifecycle hook in ~/.gemini/config/hooks.json
