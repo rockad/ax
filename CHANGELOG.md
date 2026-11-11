@@ -1,3 +1,15 @@
+## [0.8.6] - 2026-11-11
+
+### 🚀 Features
+
+- Rebrand binary and CLI from `ax` to `hx` (Harness Multiplexor) across all entry points, configurations, and docs
+
+### 🐛 Bug Fixes
+
+- *(remote-control)* Gate remote-control instance checks and flags strictly to the Antigravity (`agy`) harness
+- *(remote-control)* Prevent non-agy tabs (terminal, claude, opencode) from evaluating single-instance remote-control gating or printing false-positive warnings
+- *(remote-control)* Auto-heal stale `@remote_control` window options on non-agy windows in tmux
+
 ## [0.8.5] - 2026-11-10
 
 ### 🚀 Features
