@@ -390,6 +390,9 @@ impl<R: TmuxCommandRunner> TmuxClient<R> {
         };
         let _ = self
             .runner
+            .run(&["set-option", "-t", name, "@hx_project", &clean_project]);
+        let _ = self
+            .runner
             .run(&["set-option", "-t", name, "@ax_project", &clean_project]);
         let _ = self
             .runner

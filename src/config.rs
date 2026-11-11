@@ -332,26 +332,82 @@ impl Default for KeybindingsConfig {
 }
 
 impl Config {
-    /// Return the canonical config directory: $XDG_CONFIG_HOME/ax or ~/.config/ax (with legacy agymux fallback)
-    pub fn config_dir() -> PathBuf {
-        let base = dirs::config_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"));
-        let ax_dir = base.join("ax");
-        let agymux_dir = base.join("agymux");
-        if ax_dir.exists() {
-            ax_dir
-        } else if agymux_dir.exists() {
-            agymux_dir
-        } else {
-            ax_dir
-        }
-    }
-
-    /// Return the canonical primary config directory ($XDG_CONFIG_HOME/ax or ~/.config/ax)
+    /// Return the canonical primary config directory ($XDG_CONFIG_HOME/hx or ~/.config/hx)
     pub fn primary_config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-            .join("ax")
+            .join("hx")
+    }
+
+    /// Recursively copy directory contents from `src` to `dst`.
+    pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            let dest_path = dst.join(entry.file_name());
+            if ty.is_dir() {
+                Self::copy_dir_all(&entry.path(), &dest_path)?;
+            } else {
+                let _ = fs::copy(entry.path(), dest_path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Automatically migrate legacy ax (or agymux) configuration and sessions to hx
+    pub fn maybe_migrate_legacy_config(
+        target_dir: &std::path::Path,
+        legacy_dir: &std::path::Path,
+    ) -> Result<()> {
+        if !target_dir.exists() && legacy_dir.exists() {
+            fs::create_dir_all(target_dir).with_context(|| {
+                format!("Failed to create config directory at {:?}", target_dir)
+            })?;
+
+            // 1. Migrate config.toml
+            let legacy_config = legacy_dir.join("config.toml");
+            let target_config = target_dir.join("config.toml");
+            if legacy_config.exists() && !target_config.exists() {
+                let _ = fs::copy(&legacy_config, &target_config);
+            }
+
+            // 2. Migrate sessions/
+            let legacy_sessions = legacy_dir.join("sessions");
+            let target_sessions = target_dir.join("sessions");
+            if legacy_sessions.is_dir() && !target_sessions.exists() {
+                let _ = Self::copy_dir_all(&legacy_sessions, &target_sessions);
+            }
+
+            // 3. Migrate harnesses/ if present
+            let legacy_harnesses = legacy_dir.join("harnesses");
+            let target_harnesses = target_dir.join("harnesses");
+            if legacy_harnesses.is_dir() && !target_harnesses.exists() {
+                let _ = Self::copy_dir_all(&legacy_harnesses, &target_harnesses);
+            }
+        }
+        Ok(())
+    }
+
+    /// Return the canonical config directory: $XDG_CONFIG_HOME/hx or ~/.config/hx (with legacy ax & agymux migration)
+    pub fn config_dir() -> PathBuf {
+        let base = dirs::config_dir()
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"));
+        let hx_dir = base.join("hx");
+        let ax_dir = base.join("ax");
+        let agymux_dir = base.join("agymux");
+
+        if hx_dir.exists() {
+            hx_dir
+        } else if ax_dir.exists() {
+            let _ = Self::maybe_migrate_legacy_config(&hx_dir, &ax_dir);
+            hx_dir
+        } else if agymux_dir.exists() {
+            let _ = Self::maybe_migrate_legacy_config(&hx_dir, &agymux_dir);
+            hx_dir
+        } else {
+            hx_dir
+        }
     }
 
     /// Return the canonical config file path
@@ -360,12 +416,24 @@ impl Config {
         if primary.exists() {
             primary
         } else {
-            let legacy = dirs::config_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-                .join("agymux")
-                .join("config.toml");
-            if legacy.exists() {
-                legacy
+            let base = dirs::config_dir()
+                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"));
+            let ax_config = base.join("ax").join("config.toml");
+            let agymux_config = base.join("agymux").join("config.toml");
+            if ax_config.exists() {
+                let _ = Self::maybe_migrate_legacy_config(&base.join("hx"), &base.join("ax"));
+                if primary.exists() {
+                    primary
+                } else {
+                    ax_config
+                }
+            } else if agymux_config.exists() {
+                let _ = Self::maybe_migrate_legacy_config(&base.join("hx"), &base.join("agymux"));
+                if primary.exists() {
+                    primary
+                } else {
+                    agymux_config
+                }
             } else {
                 primary
             }
@@ -792,5 +860,38 @@ max_history = 20
         let config: Config = toml::from_str(toml_str).expect("session toml parses");
         assert_eq!(config.session.restore_mode, SessionRestoreMode::Restore);
         assert_eq!(config.session.max_history, 20);
+    }
+
+    #[test]
+    fn test_maybe_migrate_legacy_config() {
+        let dir = tempdir().unwrap();
+        let legacy_ax = dir.path().join("ax");
+        let target_hx = dir.path().join("hx");
+
+        // Set up legacy ax directory with config.toml and sessions
+        fs::create_dir_all(legacy_ax.join("sessions").join("history").join("demo")).unwrap();
+        fs::write(
+            legacy_ax.join("config.toml"),
+            "[general]\ndefault_effort = \"high\"\n",
+        )
+        .unwrap();
+        fs::write(
+            legacy_ax.join("sessions").join("demo.json"),
+            "{\"project\": \"demo\"}",
+        )
+        .unwrap();
+
+        assert!(!target_hx.exists());
+        Config::maybe_migrate_legacy_config(&target_hx, &legacy_ax).unwrap();
+
+        assert!(target_hx.exists());
+        assert!(target_hx.join("config.toml").exists());
+        let migrated_toml = fs::read_to_string(target_hx.join("config.toml")).unwrap();
+        assert!(migrated_toml.contains("default_effort = \"high\""));
+
+        assert!(target_hx.join("sessions").join("demo.json").exists());
+        let migrated_snap =
+            fs::read_to_string(target_hx.join("sessions").join("demo.json")).unwrap();
+        assert!(migrated_snap.contains("\"demo\""));
     }
 }

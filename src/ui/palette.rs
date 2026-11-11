@@ -88,7 +88,7 @@ impl PaletteItem {
             PaletteItem {
                 action: PaletteAction::ResetTabTitle,
                 title: "Reset Tab Title",
-                shortcut: "ax hook",
+                shortcut: "hx hook",
                 mnemonic: Some('R'),
             },
             PaletteItem {
@@ -225,8 +225,8 @@ impl PaletteItem {
             },
             PaletteItem {
                 action: PaletteAction::ReloadConfig,
-                title: "Reload ax Configuration",
-                shortcut: "ax reload",
+                title: "Reload hx Configuration",
+                shortcut: "hx reload",
                 mnemonic: None,
             },
             PaletteItem {
@@ -250,13 +250,13 @@ impl PaletteItem {
             PaletteItem {
                 action: PaletteAction::RestoreSession,
                 title: "Restore Session Layout",
-                shortcut: "ax restore",
+                shortcut: "hx restore",
                 mnemonic: None,
             },
             PaletteItem {
                 action: PaletteAction::SessionHistory,
                 title: "Browse Session History & Snapshots",
-                shortcut: "ax session history",
+                shortcut: "hx session history",
                 mnemonic: None,
             },
         ]
@@ -689,16 +689,16 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
     let proj = project.unwrap_or("default");
     match action {
         PaletteAction::RenameTab => {
-            // Display tmux rename-window prompt and delegate to ax rename
+            // Display tmux rename-window prompt and delegate to hx rename
             let _ = Command::new("tmux")
-                .args(["command-prompt", "-I", "#W", "run-shell 'ax rename \"%%\"'"])
+                .args(["command-prompt", "-I", "#W", "run-shell 'hx rename \"%%\"'"])
                 .status();
         }
         PaletteAction::ResetTabTitle => {
             let _ = Command::new("tmux")
                 .args(["set-option", "-w", "@user_renamed", "0"])
                 .status();
-            let _ = Command::new("tmux").args(["run-shell", "ax hook"]).status();
+            let _ = Command::new("tmux").args(["run-shell", "hx hook"]).status();
         }
         PaletteAction::NewTab => {
             let _ = Command::new("tmux")
@@ -706,7 +706,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("ax run --project '{}'", proj),
+                    &format!("hx run --project '{}'", proj),
                 ])
                 .status();
         }
@@ -718,7 +718,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                         "new-window",
                         "-n",
                         "[fork]",
-                        &format!("ax run --project '{}' --conversation '{}'", proj, conv_id),
+                        &format!("hx run --project '{}' --conversation '{}'", proj, conv_id),
                     ])
                     .status();
             } else {
@@ -727,7 +727,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                         "command-prompt",
                         "-p",
                         "Fork conversation ID: ",
-                        &format!("new-window -n '[fork]' 'ax run --project \"{}\" --conversation \"%%\"'", proj),
+                        &format!("new-window -n '[fork]' 'hx run --project \"{}\" --conversation \"%%\"'", proj),
                     ])
                     .status();
             }
@@ -739,7 +739,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "-p",
                     "New worktree branch: ",
                     &format!(
-                        "new-window -n '[%%]' 'sh -c \"RAW=\\\"%%\\\"; BRANCH=\\$(printf \\\"%s\\\" \\\"\\$RAW\\\" | tr \\\" \\\" \\\"-\\\" | tr -cd \\\"a-zA-Z0-9._/-\\\" | sed \\\"s/^-*//\\\"); [ -n \\\"\\$BRANCH\\\" ] && git worktree add -b -- \\\"\\$BRANCH\\\" \\\".worktrees/\\$BRANCH\\\" && cd \\\".worktrees/\\$BRANCH\\\" && ax run --project \\\"{}\\\"\"'",
+                        "new-window -n '[%%]' 'sh -c \"RAW=\\\"%%\\\"; BRANCH=\\$(printf \\\"%s\\\" \\\"\\$RAW\\\" | tr \\\" \\\" \\\"-\\\" | tr -cd \\\"a-zA-Z0-9._/-\\\" | sed \\\"s/^-*//\\\"); [ -n \\\"\\$BRANCH\\\" ] && git worktree add -b -- \\\"\\$BRANCH\\\" \\\".worktrees/\\$BRANCH\\\" && cd \\\".worktrees/\\$BRANCH\\\" && hx run --project \\\"{}\\\"\"'",
                         proj
                     ),
                 ])
@@ -752,7 +752,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "-p",
                     "Flags (e.g. --model 'Gemini Pro' --effort high): ",
                     &format!(
-                        "new-window -n 'agy [custom]' 'ax run --project \"{}\" %%'",
+                        "new-window -n 'agy [custom]' 'hx run --project \"{}\" %%'",
                         proj
                     ),
                 ])
@@ -771,7 +771,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
         PaletteAction::SwitchTab => {
             let _ = Command::new("tmux")
-                .args(["display-popup", "-E", "-w", "85%", "-h", "80%", "ax switch"])
+                .args(["display-popup", "-E", "-w", "85%", "-h", "80%", "hx switch"])
                 .status();
         }
         PaletteAction::SwitchProject => {
@@ -783,13 +783,13 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "70%",
                     "-h",
                     "70%",
-                    "ax project",
+                    "hx project",
                 ])
                 .status();
         }
         PaletteAction::Shortcuts => {
             let _ = Command::new("tmux")
-                .args(["display-popup", "-E", "-w", "65%", "-h", "70%", "ax helper"])
+                .args(["display-popup", "-E", "-w", "65%", "-h", "70%", "hx helper"])
                 .status();
         }
         PaletteAction::Detach => {
@@ -840,7 +840,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
         }
         PaletteAction::BindConversation => {
             let _ = Command::new("tmux")
-                .args(["display-popup", "-E", "-w", "75%", "-h", "60%", "ax bind"])
+                .args(["display-popup", "-E", "-w", "75%", "-h", "60%", "hx bind"])
                 .status();
         }
         PaletteAction::NewTerminalTab => {
@@ -891,7 +891,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("ax run -H claude --project '{}'", proj),
+                    &format!("hx run -H claude --project '{}'", proj),
                 ])
                 .status();
         }
@@ -901,7 +901,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "new-window",
                     "-n",
                     "+ new",
-                    &format!("ax run -H agy --project '{}'", proj),
+                    &format!("hx run -H agy --project '{}'", proj),
                 ])
                 .status();
         }
@@ -934,8 +934,8 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                 })
                 .unwrap_or_else(|| {
                     project
-                        .map(|p| format!("ax-{}", p))
-                        .unwrap_or_else(|| "ax-default".to_string())
+                        .map(|p| format!("hx-{}", p))
+                        .unwrap_or_else(|| "hx-default".to_string())
                 });
 
             let config = crate::config::Config::load().unwrap_or_default();
@@ -950,13 +950,13 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     .args(["set-option", "-u", "-t", &active_session, "status"])
                     .status();
                 let _ = Command::new("tmux")
-                    .args(["display-message", "ax: configuration reloaded"])
+                    .args(["display-message", "hx: configuration reloaded"])
                     .status();
             }
         }
         PaletteAction::JoinTab => {
             let _ = Command::new("tmux")
-                .args(["display-popup", "-E", "-w", "75%", "-h", "55%", "ax join"])
+                .args(["display-popup", "-E", "-w", "75%", "-h", "55%", "hx join"])
                 .status();
         }
         PaletteAction::UnsplitPane => {
@@ -990,7 +990,7 @@ pub fn execute_action(action: PaletteAction, project: Option<&str>) -> anyhow::R
                     "85%",
                     "-h",
                     "65%",
-                    "ax session history",
+                    "hx session history",
                 ])
                 .status();
         }
@@ -1048,12 +1048,12 @@ pub fn sanitize_worktree_branch(branch: &str) -> String {
         .to_string()
 }
 
-/// Format the shell command for creating a git worktree and launching ax
+/// Format the shell command for creating a git worktree and launching hx
 pub fn format_worktree_command(branch: &str, project: &str) -> String {
     let clean_branch = sanitize_worktree_branch(branch);
     let wt_path = format!(".worktrees/{}", clean_branch);
     format!(
-        "git worktree add -b -- {} {} && cd {} && ax run --project {}",
+        "git worktree add -b -- {} {} && cd {} && hx run --project {}",
         shell_quote(&clean_branch),
         shell_quote(&wt_path),
         shell_quote(&wt_path),
@@ -1110,13 +1110,13 @@ mod tests {
         let cmd = format_worktree_command("feature/test", "my-project");
         assert_eq!(
             cmd,
-            "git worktree add -b -- 'feature/test' '.worktrees/feature/test' && cd '.worktrees/feature/test' && ax run --project 'my-project'"
+            "git worktree add -b -- 'feature/test' '.worktrees/feature/test' && cd '.worktrees/feature/test' && hx run --project 'my-project'"
         );
 
         let cmd_injection = format_worktree_command("--flag; injection", "proj");
         assert_eq!(
             cmd_injection,
-            "git worktree add -b -- 'flag-injection' '.worktrees/flag-injection' && cd '.worktrees/flag-injection' && ax run --project 'proj'"
+            "git worktree add -b -- 'flag-injection' '.worktrees/flag-injection' && cd '.worktrees/flag-injection' && hx run --project 'proj'"
         );
     }
 }

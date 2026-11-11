@@ -44,7 +44,7 @@ pub fn run() -> Result<()> {
             && is_remote_control_active()
         {
             effective_remote_control = false;
-            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("hx: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
         let mut cmd = Command::new("agy");
         cmd.args(["--project", &project]);
@@ -182,15 +182,15 @@ pub fn run() -> Result<()> {
                     let _ = Command::new("tmux")
                         .args([
                             "display-message",
-                            "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
+                            "hx: Active remote-control instance already running on this machine (skipping --remote-control)",
                         ])
                         .status();
                 } else {
-                    eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
+                    eprintln!("hx: Active remote-control instance already running on this machine (skipping --remote-control)");
                 }
             }
             let mut run_args = format!(
-                "ax run -H {} --project '{}'",
+                "hx run -H {} --project '{}'",
                 agent_harness.as_str(),
                 project
             );
@@ -398,11 +398,11 @@ fn handle_attach(
             let _ = Command::new("tmux")
                 .args([
                     "display-message",
-                    "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
+                    "hx: Active remote-control instance already running on this machine (skipping --remote-control)",
                 ])
                 .status();
         } else {
-            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("hx: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
     }
 
@@ -429,6 +429,15 @@ fn handle_attach(
         } else {
             "main".to_string()
         };
+        let _ = Command::new("tmux")
+            .args([
+                "set-option",
+                "-t",
+                target_session,
+                "@hx_project",
+                &clean_project,
+            ])
+            .status();
         let _ = Command::new("tmux")
             .args([
                 "set-option",
@@ -515,7 +524,7 @@ fn handle_attach(
                     .args(["select-window", "-t", win_id])
                     .status();
             } else {
-                let mut run_cmd = format!("ax run -H {} --project '{}'", req_harness, project);
+                let mut run_cmd = format!("hx run -H {} --project '{}'", req_harness, project);
                 if effective_remote_control {
                     run_cmd.push_str(" --remote-control");
                 }
@@ -560,7 +569,7 @@ fn handle_attach(
                 return tmux::TmuxDriver::attach_session(target_session);
             } else {
                 eprintln!(
-                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                    "hx: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                     target_session, target_session
                 );
                 return Ok(());
@@ -588,7 +597,7 @@ fn handle_attach(
                 return tmux::TmuxDriver::attach_session(target_session);
             } else {
                 eprintln!(
-                    "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                    "hx: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                     target_session, target_session
                 );
                 return Ok(());
@@ -614,7 +623,7 @@ fn handle_attach(
             return tmux::TmuxDriver::attach_session(target_session);
         } else {
             eprintln!(
-                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                "hx: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                 target_session, target_session
             );
             return Ok(());
@@ -623,7 +632,7 @@ fn handle_attach(
 
     // Session does not exist yet
     if !args.is_empty() {
-        let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
+        let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
         if effective_remote_control {
             run_cmd.push_str(" --remote-control");
         }
@@ -666,7 +675,7 @@ fn handle_attach(
             return tmux::TmuxDriver::attach_session(session_name);
         } else {
             eprintln!(
-                "ax: Session '{}' is running in the background. (attach with: tmux attach -t {})",
+                "hx: Session '{}' is running in the background. (attach with: tmux attach -t {})",
                 session_name, session_name
             );
             return Ok(());
@@ -790,7 +799,7 @@ fn handle_attach(
     // Session does not exist yet and no args:
     // If an explicit harness was requested, skip Ask and immediately create session
     if harness.is_some() {
-        let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
+        let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
         if effective_remote_control {
             run_cmd.push_str(" --remote-control");
         }
@@ -875,7 +884,7 @@ fn handle_attach(
 
     match startup_action {
         crate::config::StartupAction::New => {
-            let mut run_cmd = format!("ax run -H {} --project '{}'", effective_harness, project);
+            let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
@@ -910,11 +919,11 @@ fn handle_attach(
 
             let mut run_cmd = if let Some(ref lid) = latest_id {
                 format!(
-                    "ax run -H {} --project '{}' --conversation '{}'",
+                    "hx run -H {} --project '{}' --conversation '{}'",
                     effective_harness, project, lid
                 )
             } else {
-                format!("ax run -H {} --project '{}'", effective_harness, project)
+                format!("hx run -H {} --project '{}'", effective_harness, project)
             };
             if effective_remote_control {
                 run_cmd.push_str(" --remote-control");
@@ -1536,11 +1545,11 @@ fn run_runner(
             let _ = Command::new("tmux")
                 .args([
                     "display-message",
-                    "ax: Active remote-control instance already running on this machine (skipping --remote-control)",
+                    "hx: Active remote-control instance already running on this machine (skipping --remote-control)",
                 ])
                 .status();
         } else {
-            eprintln!("ax: Active remote-control instance already running on this machine (skipping --remote-control)");
+            eprintln!("hx: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
     }
 
@@ -1792,7 +1801,7 @@ fn format_number_cli(num: u64) -> String {
     }
 }
 
-/// List active ax sessions
+/// List active hx sessions
 fn run_ls() -> Result<()> {
     let output = Command::new("tmux")
         .args([
@@ -1813,9 +1822,9 @@ fn run_ls() -> Result<()> {
     }
 
     if active.is_empty() {
-        println!("No active ax sessions found.");
+        println!("No active hx sessions found.");
     } else {
-        println!("Active ax sessions:");
+        println!("Active hx sessions:");
         for s in active {
             println!("  {}", s);
         }
@@ -2348,7 +2357,11 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
 
     // Auto-save session layout snapshot
     let active_proj = Command::new("tmux")
-        .args(["display-message", "-p", "#{@ax_project}"])
+        .args([
+            "display-message",
+            "-p",
+            "#{?#{@hx_project},#{@hx_project},#{@ax_project}}",
+        ])
         .output()
         .ok()
         .and_then(|o| {
@@ -2746,10 +2759,10 @@ pub fn run_reload(default_session: &str, config: &Config) -> Result<()> {
         let _ = crate::core::save_session_layout(proj);
 
         let _ = Command::new("tmux")
-            .args(["display-message", "ax: configuration reloaded"])
+            .args(["display-message", "hx: configuration reloaded"])
             .status();
         println!(
-            "Successfully reloaded ax configuration for session '{}'",
+            "Successfully reloaded hx configuration for session '{}'",
             active_session
         );
         Ok(())
@@ -2825,7 +2838,7 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
     if let Some(ref t) = target_str {
         disp_cmd.args(["-t", t]);
     }
-    disp_cmd.arg("#{pane_id}|#{window_id}|#{window_name}|#{pane_current_path}|#{@harness}|#{@conversation_id}|#{@ax_project}|#{@remote_control}|#{@user_renamed}|#{pane_current_command}|#{session_name}|#{pane_pid}");
+    disp_cmd.arg("#{pane_id}|#{window_id}|#{window_name}|#{pane_current_path}|#{@harness}|#{@conversation_id}|#{?#{@hx_project},#{@hx_project},#{@ax_project}}|#{@remote_control}|#{@user_renamed}|#{pane_current_command}|#{session_name}|#{pane_pid}");
 
     let disp_out = disp_cmd
         .output()
@@ -2977,7 +2990,7 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
     let cmd = if matches!(harness, crate::core::AgentHarness::PlainTerminal) {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
     } else {
-        let mut c = format!("ax run -H {} --project '{}'", harness.as_str(), project);
+        let mut c = format!("hx run -H {} --project '{}'", harness.as_str(), project);
         if let Some(ref cid) = conv_id {
             if !cid.is_empty() {
                 c.push_str(&format!(" --conversation '{}'", cid));
@@ -3009,7 +3022,7 @@ pub fn run_restart(target: Option<String>) -> Result<()> {
 
     // 8. Toast in tmux and stdout
     let toast = format!(
-        "ax: Restarted {} in tab '{}'",
+        "hx: Restarted {} in tab '{}'",
         harness.as_str(),
         window_name
     );
@@ -3091,14 +3104,14 @@ pub fn ensure_hook_installed_at(hook_path: &Path) -> Result<PathBuf> {
         "PreInvocation": [
             {
                 "type": "command",
-                "command": "ax hook --running 1",
+                "command": "hx hook --running 1",
                 "timeout": 5
             }
         ],
         "Stop": [
             {
                 "type": "command",
-                "command": "ax hook",
+                "command": "hx hook",
                 "timeout": 5
             }
         ]
@@ -3106,7 +3119,8 @@ pub fn ensure_hook_installed_at(hook_path: &Path) -> Result<PathBuf> {
 
     if let Some(obj) = root.as_object_mut() {
         obj.remove("agymux-tab-sync");
-        obj.insert("ax-tab-sync".to_string(), hook_entry);
+        obj.remove("ax-tab-sync");
+        obj.insert("hx-tab-sync".to_string(), hook_entry);
     }
 
     let formatted = serde_json::to_string_pretty(&root)?;
@@ -3238,7 +3252,7 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
                 *submit_val = serde_json::json!([]);
             }
             if let Some(submit_arr) = submit_val.as_array_mut() {
-                merge_hook_event(submit_arr, "ax hook --running 1");
+                merge_hook_event(submit_arr, "hx hook --running 1");
             }
 
             let stop_val = hooks_obj
@@ -3248,7 +3262,7 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
                 *stop_val = serde_json::json!([]);
             }
             if let Some(stop_arr) = stop_val.as_array_mut() {
-                merge_hook_event(stop_arr, "ax hook --running 0");
+                merge_hook_event(stop_arr, "hx hook --running 0");
             }
         }
     }
@@ -3276,12 +3290,12 @@ pub fn ensure_claude_hooks_installed() -> Result<PathBuf> {
     ensure_claude_hooks_installed_at(&settings_path)
 }
 
-/// CLI command to install ax lifecycle hook to ~/.gemini/config/hooks.json and ~/.claude/settings.json
+/// CLI command to install hx lifecycle hook to ~/.gemini/config/hooks.json and ~/.claude/settings.json
 pub fn run_install() -> Result<()> {
     let hook_path = ensure_hook_installed()?;
-    println!("Installed ax hook to {}", hook_path.display());
+    println!("Installed hx hook to {}", hook_path.display());
     match ensure_claude_hooks_installed() {
-        Ok(claude_path) => println!("Installed ax Claude hooks to {}", claude_path.display()),
+        Ok(claude_path) => println!("Installed hx Claude hooks to {}", claude_path.display()),
         Err(e) => eprintln!("Warning: failed to install Claude hooks: {}", e),
     }
     Ok(())
@@ -3559,9 +3573,9 @@ mod tests {
         let read_back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hook_path).unwrap()).unwrap();
         assert!(read_back.get("other-hook").is_some());
-        assert!(read_back.get("ax-tab-sync").is_some());
-        assert_eq!(read_back["ax-tab-sync"]["enabled"], true);
-        assert_eq!(read_back["ax-tab-sync"]["Stop"][0]["command"], "ax hook");
+        assert!(read_back.get("hx-tab-sync").is_some());
+        assert_eq!(read_back["hx-tab-sync"]["enabled"], true);
+        assert_eq!(read_back["hx-tab-sync"]["Stop"][0]["command"], "hx hook");
     }
 
     #[test]
@@ -3615,7 +3629,7 @@ mod tests {
         let updated: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&hook_path).unwrap()).unwrap();
         assert!(updated.get("my-hook").is_some());
-        assert!(updated.get("ax-tab-sync").is_some());
+        assert!(updated.get("hx-tab-sync").is_some());
     }
 
     #[test]
@@ -3634,7 +3648,7 @@ mod tests {
         let idx_z = raw_str.find("\"zebra\"").unwrap();
         let idx_a = raw_str.find("\"alpha\"").unwrap();
         let idx_m = raw_str.find("\"middle\"").unwrap();
-        let idx_ax = raw_str.find("\"ax-tab-sync\"").unwrap();
+        let idx_ax = raw_str.find("\"hx-tab-sync\"").unwrap();
 
         assert!(idx_z < idx_a);
         assert!(idx_a < idx_m);
@@ -3647,7 +3661,7 @@ mod tests {
             .keys()
             .map(|k| k.as_str())
             .collect();
-        assert_eq!(keys, vec!["zebra", "alpha", "middle", "ax-tab-sync"]);
+        assert_eq!(keys, vec!["zebra", "alpha", "middle", "hx-tab-sync"]);
     }
 
     #[test]
@@ -3682,7 +3696,7 @@ mod tests {
         let real_str = std::fs::read_to_string(&real_path).unwrap();
         let val: serde_json::Value = serde_json::from_str(&real_str).unwrap();
         assert!(val.get("real-hook").is_some());
-        assert!(val.get("ax-tab-sync").is_some());
+        assert!(val.get("hx-tab-sync").is_some());
 
         // Backup must exist alongside the canonical target
         let real_bak = target_dir.path().join("canonical_hooks.json.bak");
@@ -3714,9 +3728,9 @@ mod tests {
         let hooks = &read_back["hooks"];
         assert!(hooks.is_object());
         let submit_cmd = &hooks["UserPromptSubmit"][0]["hooks"][0]["command"];
-        assert_eq!(submit_cmd, "ax hook --running 1");
+        assert_eq!(submit_cmd, "hx hook --running 1");
         let stop_cmd = &hooks["Stop"][0]["hooks"][0]["command"];
-        assert_eq!(stop_cmd, "ax hook --running 0");
+        assert_eq!(stop_cmd, "hx hook --running 0");
     }
 
     #[test]
@@ -3834,7 +3848,7 @@ mod tests {
 
     #[test]
     fn test_find_claude_session_id_parsing() {
-        let temp_dir = std::env::temp_dir().join(format!("ax-test-claude-{}", std::process::id()));
+        let temp_dir = std::env::temp_dir().join(format!("hx-test-claude-{}", std::process::id()));
         let _ = fs::create_dir_all(&temp_dir);
         let sample_json =
             r#"{"pid":99999,"sessionId":"test-session-uuid-1234","tmux":"agy-test:@10.%1"}"#;

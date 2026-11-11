@@ -187,7 +187,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &RestoreSelectorState) {
         .split(modal_area);
 
     // 1. Header
-    let block = styled_block("ax Session Restore", true);
+    let block = styled_block("hx Session Restore", true);
     let title_p = Paragraph::new(Line::from(vec![
         Span::styled(" Project: ", Style::default().fg(COLOR_CYAN)),
         Span::styled(
@@ -263,7 +263,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &RestoreSelectorState) {
     let footer_p = Paragraph::new(vec![
         Line::from(vec![Span::styled(
             format!(
-                "  {} Remember choice in ~/.config/ax/config.toml (Space/r)",
+                "  {} Remember choice in ~/.config/hx/config.toml (Space/r)",
                 checkbox
             ),
             if state.remember {

@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# uninstall.sh: Clean uninstaller for ax
+# uninstall.sh: Clean uninstaller for hx
 
 set -euo pipefail
 
 BIN_DIR="${HOME}/.local/bin"
 TMUX_CONF="${HOME}/.config/tmux/tmux.conf"
+TMUX_HX_CONF="${HOME}/.config/tmux/hx.conf"
 TMUX_AX_CONF="${HOME}/.config/tmux/ax.conf"
 
-echo "==> Uninstalling ax..."
+echo "==> Uninstalling hx..."
 
 # 1. Remove binary from ~/.local/bin
+if [[ -L "$BIN_DIR/hx" || -f "$BIN_DIR/hx" ]]; then
+    echo "  -> Removing $BIN_DIR/hx"
+    rm -f "$BIN_DIR/hx"
+fi
 if [[ -L "$BIN_DIR/ax" || -f "$BIN_DIR/ax" ]]; then
     echo "  -> Removing $BIN_DIR/ax"
     rm -f "$BIN_DIR/ax"
@@ -20,19 +25,23 @@ for legacy in agymux agemux agymux-tab-picker agymux-tab-runner agymux-palette a
     rm -f "${BIN_DIR}/$legacy"
 done
 
-# 2. Remove tmux config
+# 2. Remove tmux configs
+if [[ -L "$TMUX_HX_CONF" || -f "$TMUX_HX_CONF" ]]; then
+    echo "  -> Removing $TMUX_HX_CONF"
+    rm -f "$TMUX_HX_CONF"
+fi
 if [[ -L "$TMUX_AX_CONF" || -f "$TMUX_AX_CONF" ]]; then
     echo "  -> Removing $TMUX_AX_CONF"
     rm -f "$TMUX_AX_CONF"
 fi
 rm -f "${HOME}/.config/tmux/agymux.conf" "${HOME}/.config/tmux/agymux-tabs.conf"
 
-# 3. Strip directive from tmux.conf
+# 3. Strip directives from tmux.conf
 if [[ -f "$TMUX_CONF" ]]; then
-    if grep -q "ax.conf" "$TMUX_CONF" || grep -q "agymux" "$TMUX_CONF"; then
+    if grep -q "hx.conf" "$TMUX_CONF" || grep -q "ax.conf" "$TMUX_CONF" || grep -q "agymux" "$TMUX_CONF"; then
         echo "  -> Removing source directive from $TMUX_CONF"
         tmp=$(mktemp)
-        grep -v "ax.conf" "$TMUX_CONF" | grep -v "agymux.conf" | grep -v "agymux-tabs.conf" | grep -v "# Source ax" | grep -v "# Source agymux" > "$tmp" || true
+        grep -v "hx.conf" "$TMUX_CONF" | grep -v "ax.conf" "$TMUX_CONF" | grep -v "agymux.conf" | grep -v "agymux-tabs.conf" | grep -v "# Source hx" | grep -v "# Source ax" | grep -v "# Source agymux" > "$tmp" || true
         mv "$tmp" "$TMUX_CONF"
     fi
 fi
@@ -43,4 +52,4 @@ if command -v tmux >/dev/null 2>&1 && tmux has-session 2>/dev/null; then
     tmux source-file "$TMUX_CONF" 2>/dev/null || true
 fi
 
-echo "==> ax uninstalled cleanly."
+echo "==> hx uninstalled cleanly."

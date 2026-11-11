@@ -44,19 +44,43 @@ pub struct LiveWindow {
     pub harness: Option<String>,
 }
 
-/// Directory where session layout snapshots are stored (~/.config/ax/sessions)
+/// Directory where session layout snapshots are stored (~/.config/hx/sessions)
 pub fn sessions_dir() -> PathBuf {
-    dirs::config_dir()
-        .map(|p| p.join("ax").join("sessions"))
-        .unwrap_or_else(|| PathBuf::from(".config/ax/sessions"))
+    let dir = crate::config::Config::config_dir().join("sessions");
+    if !dir.exists() {
+        maybe_migrate_legacy_sessions(&dir);
+    }
+    dir
 }
 
-/// Directory where session layout history snapshots are stored (~/.config/ax/sessions/history/<project>)
+pub fn maybe_migrate_legacy_sessions(target: &Path) {
+    if target.exists() {
+        return;
+    }
+    let mut candidates = Vec::new();
+    if let Some(grandparent) = target.parent().and_then(|p| p.parent()) {
+        candidates.push(grandparent.join("ax").join("sessions"));
+        candidates.push(grandparent.join("agymux").join("sessions"));
+    }
+    if let Some(base) = dirs::config_dir() {
+        candidates.push(base.join("ax").join("sessions"));
+        candidates.push(base.join("agymux").join("sessions"));
+    }
+
+    for legacy in candidates {
+        if legacy.is_dir() {
+            let _ = crate::config::Config::copy_dir_all(&legacy, target);
+            break;
+        }
+    }
+}
+
+/// Directory where session layout history snapshots are stored (~/.config/hx/sessions/history/<project>)
 pub fn session_history_dir(project: &str) -> PathBuf {
     sessions_dir().join("history").join(project)
 }
 
-/// Filepath for a given project's session snapshot (~/.config/ax/sessions/<project>.json)
+/// Filepath for a given project's session snapshot (~/.config/hx/sessions/<project>.json)
 pub fn session_snapshot_path(project: &str) -> PathBuf {
     sessions_dir().join(format!("{}.json", project))
 }
@@ -351,7 +375,7 @@ pub fn write_session_snapshot(file_path: &Path, snapshot: &SessionSnapshot) -> R
                         });
                     if is_unconfigured {
                         eprintln!(
-                            "ax: Preserving existing multi-window snapshot for '{}' (skipping overwrite with empty/default window)",
+                            "hx: Preserving existing multi-window snapshot for '{}' (skipping overwrite with empty/default window)",
                             snapshot.project
                         );
                         return Ok(false);
@@ -684,11 +708,11 @@ fn build_window_command(project: &str, win: &WindowSnapshot) -> String {
     };
     if let Some(ref cid) = win.conversation_id {
         format!(
-            "ax run -H {} --project '{}'{name_arg} --conversation '{}'",
+            "hx run -H {} --project '{}'{name_arg} --conversation '{}'",
             harness, project, cid
         )
     } else {
-        format!("ax run -H {} --project '{}'{name_arg}", harness, project)
+        format!("hx run -H {} --project '{}'{name_arg}", harness, project)
     }
 }
 
@@ -1039,5 +1063,38 @@ mod tests {
 
         let remaining: Vec<_> = fs::read_dir(&hist_dir).unwrap().flatten().collect();
         assert_eq!(remaining.len(), 3);
+    }
+
+    #[test]
+    fn test_build_window_command_hx() {
+        let win = WindowSnapshot {
+            index: 1,
+            name: "my-tab".to_string(),
+            harness: Some("claude".to_string()),
+            conversation_id: Some("conv-123".to_string()),
+            user_renamed: true,
+            layout: None,
+            panes: vec![],
+        };
+        let cmd = build_window_command("my-project", &win);
+        assert_eq!(
+            cmd,
+            "hx run -H claude --project 'my-project' -n \"my-tab\" --conversation 'conv-123'"
+        );
+    }
+
+    #[test]
+    fn test_maybe_migrate_legacy_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join("ax").join("sessions");
+        let target = dir.path().join("hx").join("sessions");
+
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("sample.json"), "{\"project\": \"sample\"}").unwrap();
+
+        assert!(!target.exists());
+        maybe_migrate_legacy_sessions(&target);
+        assert!(target.exists());
+        assert!(target.join("sample.json").exists());
     }
 }

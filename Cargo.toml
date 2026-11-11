@@ -1,23 +1,24 @@
 [package]
-name = "ax"
+name = "hx"
 version = "0.8.5"
-default-run = "ax"
+default-run = "hx"
 edition = "2021"
 authors = ["Aleksandr Korolev"]
 description = "Terminal cockpit & multi-harness multiplexor for AI coding agents"
 license = "MIT"
-repository = "https://github.com/rockad/ax"
+repository = "https://github.com/rockad/hx"
 readme = "README.md"
 keywords = ["antigravity", "tmux", "terminal", "ai-assistant", "cockpit", "multi-harness", "multiplexer", "codex", "opencode", "claude-code"]
 categories = ["command-line-utilities", "development-tools"]
 
 [lib]
-name = "ax"
+name = "hx"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ax"
-path = "src/bin/ax.rs"
+name = "hx"
+path = "src/bin/hx.rs"
+
 
 
 [dependencies]

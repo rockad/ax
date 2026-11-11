@@ -11,21 +11,22 @@ impl TabRegistry {
     pub fn legacy_db_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-            .join("agymux")
-            .join("agymux.db")
-    }
-
-    pub fn primary_db_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
             .join("ax")
             .join("ax.db")
     }
 
+    pub fn primary_db_path() -> PathBuf {
+        crate::config::Config::config_dir().join("hx.db")
+    }
+
     pub fn db_path() -> PathBuf {
-        if let Ok(custom) = std::env::var("AX_TAB_REGISTRY_DB") {
+        if let Ok(custom) = std::env::var("HX_TAB_REGISTRY_DB") {
+            PathBuf::from(custom)
+        } else if let Ok(custom) = std::env::var("AX_TAB_REGISTRY_DB") {
             PathBuf::from(custom)
         } else if let Ok(custom) = std::env::var("AGYMUX_TAB_REGISTRY_DB") {
+            PathBuf::from(custom)
+        } else if let Ok(custom) = std::env::var("HX_TAB_REGISTRY_PATH") {
             PathBuf::from(custom)
         } else if let Ok(custom) = std::env::var("AX_TAB_REGISTRY_PATH") {
             PathBuf::from(custom)
@@ -36,23 +37,86 @@ impl TabRegistry {
         }
     }
 
+    pub fn legacy_candidate_paths(target: &std::path::Path) -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+        if let Some(parent) = target.parent() {
+            candidates.push(parent.join("ax.db"));
+            candidates.push(parent.join("tab_registry.db"));
+            candidates.push(parent.join("agymux.db"));
+
+            if let Some(grandparent) = parent.parent() {
+                candidates.push(grandparent.join("ax").join("ax.db"));
+                candidates.push(grandparent.join("ax").join("tab_registry.db"));
+                candidates.push(grandparent.join("agymux").join("agymux.db"));
+            }
+        }
+        let base = dirs::config_dir()
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"));
+        candidates.push(base.join("ax").join("ax.db"));
+        candidates.push(base.join("ax").join("tab_registry.db"));
+        candidates.push(base.join("agymux").join("agymux.db"));
+        candidates
+    }
+
     pub fn maybe_migrate_legacy_db(target: &PathBuf) -> Result<()> {
-        if !target.exists() && target == &Self::primary_db_path() {
-            let legacy = Self::legacy_db_path();
-            if legacy.exists() {
-                if let Some(parent) = target.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if std::fs::copy(&legacy, target).is_ok() {
-                    let legacy_wal = legacy.with_extension("db-wal");
-                    let target_wal = target.with_extension("db-wal");
-                    if legacy_wal.exists() {
-                        let _ = std::fs::copy(&legacy_wal, &target_wal);
+        if !target.exists() {
+            for legacy in Self::legacy_candidate_paths(target) {
+                if legacy.exists() && &legacy != target {
+                    if let Some(parent) = target.parent() {
+                        let _ = std::fs::create_dir_all(parent);
                     }
-                    let legacy_shm = legacy.with_extension("db-shm");
-                    let target_shm = target.with_extension("db-shm");
-                    if legacy_shm.exists() {
-                        let _ = std::fs::copy(&legacy_shm, &target_shm);
+                    if std::fs::copy(&legacy, target).is_ok() {
+                        let legacy_wal = legacy.with_extension("db-wal");
+                        let target_wal = target.with_extension("db-wal");
+                        if legacy_wal.exists() {
+                            let _ = std::fs::copy(&legacy_wal, &target_wal);
+                        }
+                        let legacy_shm = legacy.with_extension("db-shm");
+                        let target_shm = target.with_extension("db-shm");
+                        if legacy_shm.exists() {
+                            let _ = std::fs::copy(&legacy_shm, &target_shm);
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        } else {
+            // Target exists: merge missing records from any legacy databases
+            if let Ok(conn) = Connection::open(target) {
+                let _ = conn.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS tab_bindings (
+                        window_id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL,
+                        project TEXT,
+                        title TEXT,
+                        updated_at INTEGER NOT NULL,
+                        harness TEXT NOT NULL DEFAULT 'agy'
+                    );",
+                );
+                for legacy in Self::legacy_candidate_paths(target) {
+                    if legacy.exists() && &legacy != target {
+                        if let Ok(legacy_conn) = Connection::open(&legacy) {
+                            if let Ok(mut stmt) = legacy_conn.prepare(
+                                "SELECT window_id, conversation_id, project, title, updated_at FROM tab_bindings",
+                            ) {
+                                if let Ok(rows) = stmt.query_map([], |row| {
+                                    Ok((
+                                        row.get::<_, String>(0)?,
+                                        row.get::<_, String>(1)?,
+                                        row.get::<_, Option<String>>(2)?,
+                                        row.get::<_, Option<String>>(3)?,
+                                        row.get::<_, i64>(4)?,
+                                    ))
+                                }) {
+                                    for r in rows.flatten() {
+                                        let _ = conn.execute(
+                                            "INSERT OR IGNORE INTO tab_bindings (window_id, conversation_id, project, title, updated_at, harness) VALUES (?1, ?2, ?3, ?4, ?5, 'agy')",
+                                            params![r.0, r.1, r.2, r.3, r.4],
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -437,9 +501,9 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let temp_dir = std::env::temp_dir().join(format!("ax-migration-test-{}", nanos));
-        let legacy_db = temp_dir.join("agymux").join("agymux.db");
-        let target_db = temp_dir.join("ax").join("ax.db");
+        let temp_dir = std::env::temp_dir().join(format!("hx-migration-test-{}", nanos));
+        let legacy_db = temp_dir.join("ax").join("ax.db");
+        let target_db = temp_dir.join("hx").join("hx.db");
 
         std::fs::create_dir_all(legacy_db.parent().unwrap()).unwrap();
         // Create legacy DB with a binding
@@ -461,10 +525,7 @@ mod tests {
         // Test migration copy
         assert!(!target_db.exists());
         TabRegistry::maybe_migrate_legacy_db(&target_db).unwrap();
-        // Target is not primary_db_path so direct maybe_migrate_legacy_db checks path equality.
-        // Let's test direct copy simulation:
-        std::fs::create_dir_all(target_db.parent().unwrap()).unwrap();
-        std::fs::copy(&legacy_db, &target_db).unwrap();
+        assert!(target_db.exists());
 
         let conn = Connection::open(&target_db).unwrap();
         let cid: String = conn

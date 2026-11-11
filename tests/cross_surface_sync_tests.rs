@@ -1,9 +1,9 @@
-use ax::cli::{Cli, Commands};
-use ax::config::Config;
-use ax::core::session::{get_conversation_mtime_and_steps, latest_conversation_id};
-use ax::ui::palette::{PaletteAction, PaletteItem, PaletteState};
-use ax::{build_agy_args, is_remote_control_active, resolve_effective_remote_control};
 use clap::Parser;
+use hx::cli::{Cli, Commands};
+use hx::config::Config;
+use hx::core::session::{get_conversation_mtime_and_steps, latest_conversation_id};
+use hx::ui::palette::{PaletteAction, PaletteItem, PaletteState};
+use hx::{build_agy_args, is_remote_control_active, resolve_effective_remote_control};
 use rusqlite::Connection;
 
 #[test]
@@ -79,11 +79,11 @@ fn test_is_remote_control_active_and_single_instance_gating() {
 #[test]
 fn test_cli_remote_control_flags() {
     // Global flag
-    let cli = Cli::try_parse_from(["ax", "--remote-control"]).expect("parsing succeeds");
+    let cli = Cli::try_parse_from(["hx", "--remote-control"]).expect("parsing succeeds");
     assert!(cli.remote_control);
 
     // Run command with global --remote-control
-    let cli_run = Cli::try_parse_from(["ax", "--remote-control", "run", "-c", "cid-123"])
+    let cli_run = Cli::try_parse_from(["hx", "--remote-control", "run", "-c", "cid-123"])
         .expect("parsing succeeds");
     assert!(cli_run.remote_control);
     match cli_run.command {
@@ -95,7 +95,7 @@ fn test_cli_remote_control_flags() {
 
     // Run command with forwarded trailing flag after --
     let cli_run_forwarded =
-        Cli::try_parse_from(["ax", "run", "--", "--remote-control", "-c", "cid-123"])
+        Cli::try_parse_from(["hx", "run", "--", "--remote-control", "-c", "cid-123"])
             .expect("parsing succeeds");
     match cli_run_forwarded.command {
         Some(Commands::Run { args, .. }) => {
@@ -107,7 +107,7 @@ fn test_cli_remote_control_flags() {
 
     // Attach command with forwarded --remote-control
     let cli_attach =
-        Cli::try_parse_from(["ax", "attach", "--", "--remote-control"]).expect("parsing succeeds");
+        Cli::try_parse_from(["hx", "attach", "--", "--remote-control"]).expect("parsing succeeds");
     match cli_attach.command {
         Some(Commands::Attach { args }) => {
             assert!(args.contains(&"--remote-control".to_string()));
@@ -293,14 +293,14 @@ fn test_watcher_phase1_bound_id_exclusion() {
 
 #[test]
 fn test_sanitize_title_length_and_characters() {
-    assert_eq!(ax::sanitize_title("Short"), "Short");
+    assert_eq!(hx::sanitize_title("Short"), "Short");
     assert_eq!(
-        ax::sanitize_title("This is a title that is quite long and descriptive"),
+        hx::sanitize_title("This is a title that is quite long and descriptive"),
         "This is a title that is quite"
     );
-    assert_eq!(ax::sanitize_title("   "), "agy");
+    assert_eq!(hx::sanitize_title("   "), "agy");
     assert_eq!(
-        ax::sanitize_title("Hello / World : Test !"),
+        hx::sanitize_title("Hello / World : Test !"),
         "Hello  World  Test"
     );
 }

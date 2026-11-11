@@ -1,7 +1,7 @@
 VERSION ?= $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.packages[0].version' || sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
 TARGET ?= $(shell rustc -Vv | sed -n 's/^host: //p')
 DIST_DIR ?= dist
-PKG_NAME = ax-v$(VERSION)-$(TARGET)
+PKG_NAME = hx-v$(VERSION)-$(TARGET)
 PKG_DIR = $(DIST_DIR)/$(PKG_NAME)
 
 .PHONY: all build check test lint fmt fmt-check bench clean dist package checksums install uninstall cross-check cross-build changelog bump release help
@@ -9,7 +9,7 @@ PKG_DIR = $(DIST_DIR)/$(PKG_NAME)
 all: build
 
 help:
-	@echo "ax makefile targets:"
+	@echo "hx makefile targets:"
 	@echo "  build         - Build release binaries for host target"
 	@echo "  check         - Run cargo check across all targets and features"
 	@echo "  test          - Run test suite across all targets and features"
@@ -21,8 +21,8 @@ help:
 	@echo "  checksums     - Regenerate SHA256SUMS for all archives in dist/"
 	@echo "  cross-check   - Run cross check for musl and aarch64 targets"
 	@echo "  cross-build   - Build musl and aarch64 release binaries using cross"
-	@echo "  install       - Install ax into ~/.local/bin"
-	@echo "  uninstall     - Remove ax from ~/.local/bin"
+	@echo "  install       - Install hx into ~/.local/bin"
+	@echo "  uninstall     - Remove hx from ~/.local/bin"
 	@echo "  changelog     - Generate CHANGELOG.md via git-cliff"
 	@echo "  release       - Bump version according to semver and tag release"
 	@echo "  clean         - Clean build target directory and dist/"
@@ -56,11 +56,11 @@ package: dist
 
 dist: build
 	@mkdir -p $(PKG_DIR)/config/tmux
-	@cp target/release/ax $(PKG_DIR)/
+	@cp target/release/hx $(PKG_DIR)/
 	@cp README.md LICENSE $(PKG_DIR)/
-	@cp config/tmux/ax.conf $(PKG_DIR)/config/tmux/
+	@cp config/tmux/hx.conf $(PKG_DIR)/config/tmux/
 	@cp install.sh $(PKG_DIR)/
-	@chmod +x $(PKG_DIR)/ax $(PKG_DIR)/install.sh
+	@chmod +x $(PKG_DIR)/hx $(PKG_DIR)/install.sh
 	@tar -czf $(DIST_DIR)/$(PKG_NAME).tar.gz -C $(DIST_DIR) $(PKG_NAME)
 	@rm -rf $(PKG_DIR)
 	@cd $(DIST_DIR) && (sha256sum $(PKG_NAME).tar.gz 2>/dev/null || shasum -a 256 $(PKG_NAME).tar.gz) > $(PKG_NAME).tar.gz.sha256
@@ -90,18 +90,30 @@ cross-build:
 
 install: build
 	@mkdir -p $(HOME)/.local/bin
-	@rm -f $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
-	@cp target/release/ax $(HOME)/.local/bin/ax
-	@echo "Installed ax in $(HOME)/.local/bin"
+	@rm -f $(HOME)/.local/bin/hx $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
+	@cp target/release/hx $(HOME)/.local/bin/hx
+	@echo "Installed hx in $(HOME)/.local/bin"
 
 uninstall:
-	@rm -f $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
-	@echo "Removed ax from $(HOME)/.local/bin"
+	@rm -f $(HOME)/.local/bin/hx $(HOME)/.local/bin/ax $(HOME)/.local/bin/agymux $(HOME)/.local/bin/agemux
+	@echo "Removed hx from $(HOME)/.local/bin"
 
 changelog:
-	@which git-cliff >/dev/null 2>&1 && git-cliff --output CHANGELOG.md || bun x git-cliff --output CHANGELOG.md
+	@which git-cliff >/dev/null 2>&1 || (echo "Error: 'git-cliff' command not found. Install via: cargo install git-cliff" && exit 1)
+	@git cliff -o CHANGELOG.md
+	@echo "Updated CHANGELOG.md"
 
 bump:
-	@bash scripts/release.sh
+	@echo "Current version: $(VERSION)"
+	@read -p "Enter new version (e.g. 0.8.6): " new_version; \
+	sed -i.bak "s/^version = \".*\"/version = \"$$new_version\"/" Cargo.toml && rm -f Cargo.toml.bak; \
+	cargo check >/dev/null 2>&1; \
+	echo "Bumped version to $$new_version"
 
-release: bump
+release: test
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: Working directory has uncommitted changes. Commit or stash them first." && exit 1; \
+	fi
+	@echo "Creating release tag v$(VERSION)..."
+	@git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	@echo "Tag v$(VERSION) created. Push with: git push origin v$(VERSION)"

@@ -1,5 +1,5 @@
-use ax::core::transcript::TranscriptParser;
-use ax::sanitize_title;
+use hx::core::transcript::TranscriptParser;
+use hx::sanitize_title;
 use proptest::prelude::*;
 use std::io::Cursor;
 

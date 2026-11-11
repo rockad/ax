@@ -1,3 +1,3 @@
 fn main() -> anyhow::Result<()> {
-    ax::run()
+    hx::run()
 }

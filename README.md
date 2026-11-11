@@ -1,8 +1,8 @@
-# ax — Terminal Cockpit & Multi-Harness Multiplexor for AI Coding Agents
+# hx — Terminal Cockpit & Multi-Harness Multiplexor for AI Coding Agents
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**`ax`** is a high-performance terminal cockpit and multi-harness multiplexer for AI coding agents inside `tmux`.
+**`hx`** is a high-performance terminal cockpit and multi-harness multiplexer for AI coding agents inside `tmux`.
 
 It combines OpenCode's visual delight and spatial workflow ergonomics (top tab strip, two-pane switcher, command palette, live transcript previews, git worktree isolation, protected mouse tab closing, and vertical IDE sidebar) with first-class multi-harness execution across the premier AI coding agents — built in native Rust for sub-millisecond cold starts and zero runtime dependencies.
 
@@ -10,14 +10,14 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 ## Supported Harnesses
 
-`ax` provides unified window lifecycle management, prompt-driven dynamic naming, and dedicated shortcuts for:
+`hx` provides unified window lifecycle management, prompt-driven dynamic naming, and dedicated shortcuts for:
 
 - **Google Antigravity (`agy`)** (`󰚩`): `Ctrl+Space n` / `т`
 - **Claude Code (`claude`)** (`󰊠`): `Ctrl+Space c` / `с`
 - **OpenCode (`opencode`)** (`󰘐`): `Ctrl+Space o` / `щ`
-- **Codex (`codex`)** (`󱚣`): `ax new -H codex` / Command Palette
+- **Codex (`codex`)** (`󱚣`): `hx new -H codex` / Command Palette
 - **Plain Terminal (`term`)** (``): `Ctrl+Space t` / `е`
-- **Custom Pluggable Harnesses**: Configured in `~/.config/ax/config.toml` (`[harnesses.<name>]`) or modular `~/.config/ax/harnesses/*.toml` files with custom binary, icon, hotkey, cyrillic hotkey, args, and environment variables.
+- **Custom Pluggable Harnesses**: Configured in `~/.config/hx/config.toml` (`[harnesses.<name>]`) or modular `~/.config/hx/harnesses/*.toml` files with custom binary, icon, hotkey, cyrillic hotkey, args, and environment variables.
 
 ---
 
@@ -26,10 +26,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 - **Sub-Millisecond Cold-Start (< 1 ms):** Written in Rust with Ratatui and bundled C-SQLite. Modals launch in ~700 µs inside `tmux display-popup`.
 - **Zero External CLI Dependencies:** Bundled SQLite (`rusqlite`), streaming NDJSON parser (`serde_json`), and built-in fuzzy matching (`nucleo-matcher`). Does not require `fzf`, `jq`, or external `sqlite3`.
 - **First-Class Multi-Harness Ergonomics:** Launch and switch between Antigravity, Claude Code, OpenCode, Codex, and terminal shells inside a single unified session with dedicated icons in the tab strip.
-- **Pluggable Harness Architecture:** Define custom AI harnesses with custom hotkeys and environment overrides in `~/.config/ax/harnesses/*.toml`.
+- **Pluggable Harness Architecture:** Define custom AI harnesses with custom hotkeys and environment overrides in `~/.config/hx/harnesses/*.toml`.
 - **Top Tab Strip with Dynamic Harness Icons:** Visual status strip positioned at the top of the terminal (`status-position top`) styled in `#282a3a` warm dark grey with crisp rectangular highlighted active tabs, breathing spacer, live harness icons (`󰚩`, `󰊠`, `󰘐`, `󱚣`, ``), and status badges (`󰢹`, `󰛌`, `󰂞`, `󰅖`).
 - **Protected Mouse Tab Ergonomics:** Left-click tabs to switch, drag tabs with mouse to silently reorder, click `󰅖` or middle-click to close (with an automatic confirmation guard protecting the last tab from closing the session), and right-click for a native context menu.
-- **Vertical IDE Sidebar Rail (`Ctrl+Space B` / `И`):** Toggle an interactive 42-column sidebar rail (`ax layout`) showing git branches, conversation turn counts, token metrics, and instant hotkey selection (`1`..`9`).
+- **Vertical IDE Sidebar Rail (`Ctrl+Space B` / `И`):** Toggle an interactive 42-column sidebar rail (`hx layout`) showing git branches, conversation turn counts, token metrics, and instant hotkey selection (`1`..`9`).
 - **Two-Pane Conversation Switcher (`Ctrl+Space s` / `ы`):**
   - **Left Pane (45%):** Active open tabs and historical project conversations with fuzzy search. Supports `Tab` or `Ctrl+A` to toggle between **Local Project** and **Global Machine** search scope.
   - **Right Pane (55%):** Live rich transcript preview showing token counts, user prompt, latest turn excerpt, and executed tools.
@@ -92,10 +92,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 ## Layout Modes: Horizontal Tabs & Vertical IDE Rail
 
-`ax` supports both horizontal tab strips and a vertical OpenCode-style sidebar rail:
+`hx` supports both horizontal tab strips and a vertical OpenCode-style sidebar rail:
 
 - **Horizontal Tabs (Default):** Rendered via tmux status bar at top (or bottom) with breathing spacer.
-- **Vertical IDE Rail:** Toggle with `Ctrl+Space B` / `И`, the command palette, or `ax layout`. Hides horizontal status bar and opens a 42-column interactive TUI sidebar pane on the left showing active windows, git branches, turn metrics, and hotkeys (`1`..`9`, `x` to close, `Enter` to switch, `q` to quit). Automatically adapts to a compact 10-column icon bar on narrow terminals (< 106 cols).
+- **Vertical IDE Rail:** Toggle with `Ctrl+Space B` / `И`, the command palette, or `hx layout`. Hides horizontal status bar and opens a 42-column interactive TUI sidebar pane on the left showing active windows, git branches, turn metrics, and hotkeys (`1`..`9`, `x` to close, `Enter` to switch, `q` to quit). Automatically adapts to a compact 10-column icon bar on narrow terminals (< 106 cols).
 
 ---
 
@@ -111,9 +111,9 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 ## Configuration
 
 Detailed documentation for all configuration options, multi-harness schemas, visual layout diagrams, and preset recipes is available in:
-👉 [**ax Configuration Reference**](docs/configuration.md)
+👉 [**hx Configuration Reference**](docs/configuration.md)
 
-Default configuration path: `~/.config/ax/config.toml`
+Default configuration path: `~/.config/hx/config.toml`
 
 ---
 
@@ -121,12 +121,12 @@ Default configuration path: `~/.config/ax/config.toml`
 
 ### From Source (Cargo)
 ```bash
-git clone https://github.com/rockad/ax.git
-cd ax
+git clone https://github.com/rockad/hx.git
+cd hx
 cargo build --release
 
 # Install binary
-cp target/release/ax ~/.local/bin/
+cp target/release/hx ~/.local/bin/
 ```
 
 ---
@@ -134,7 +134,7 @@ cp target/release/ax ~/.local/bin/
 ## CLI Usage
 
 ```text
-Usage: ax [OPTIONS] [COMMAND]
+Usage: hx [OPTIONS] [COMMAND]
 
 Commands:
   attach   Attach to active session or start session in current directory (default)
@@ -150,7 +150,7 @@ Commands:
   preview  Render rich preview for a conversation ID
   layout   Toggle OpenCode-style vertical IDE sidebar layout or switch mode
   rail     Run interactive vertical sidebar rail TUI
-  ls       List active ax sessions
+  ls       List active hx sessions
   help     Print help
 
 Options:
@@ -164,11 +164,11 @@ Options:
 
 ## Session Layout Persistence
 
-`ax` automatically snapshots and restores your workspace structure across reboots and relaunches:
+`hx` automatically snapshots and restores your workspace structure across reboots and relaunches:
 
-- **Automatic Snapshots**: Layout state (window indices, names, harnesses, conversation IDs, user-rename locks, and pane layouts) is saved to `~/.config/ax/sessions/<project>.json` on every reload, client detach, window unlinking, and agent turn completion.
-- **Seamless Recovery**: When launching or attaching (`ax` / `ax attach`), `ax` detects if the session was restarted and automatically recreates tabs, harnesses, and layout splits matching your previous session snapshot.
-- **Manual Restoration**: Run `ax restore [project]` or trigger "Restore Session Layout" from the command palette (`Ctrl+Space p`) at any time.
+- **Automatic Snapshots**: Layout state (window indices, names, harnesses, conversation IDs, user-rename locks, and pane layouts) is saved to `~/.config/hx/sessions/<project>.json` on every reload, client detach, window unlinking, and agent turn completion.
+- **Seamless Recovery**: When launching or attaching (`hx` / `hx attach`), `hx` detects if the session was restarted and automatically recreates tabs, harnesses, and layout splits matching your previous session snapshot.
+- **Manual Restoration**: Run `hx restore [project]` or trigger "Restore Session Layout" from the command palette (`Ctrl+Space p`) at any time.
 - **Tab Name & Pane Telemetry Preservation**: Renamed tabs retain their titles across restorations, and joined or split panes preserve individual harness status telemetry on their respective bottom pane borders.
 
 ---

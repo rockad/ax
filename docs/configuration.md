@@ -1,24 +1,24 @@
-# ax Configuration Reference
+# hx Configuration Reference
 
-`ax` is configured through a single TOML configuration file. It manages window ergonomics, multi-harness execution, tab strip placement, visual styling, mouse click handlers, and bilingual keyboard shortcuts.
+`hx` is configured through a single TOML configuration file. It manages window ergonomics, multi-harness execution, tab strip placement, visual styling, mouse click handlers, and bilingual keyboard shortcuts.
 
 ---
 
 ## Configuration File Locations
 
-`ax` checks configuration files in the following resolution order:
+`hx` checks configuration files in the following resolution order:
 
-- **Explicit flag / environment**: Config passed via CLI flags or `$AX_CONFIG`.
-- **Primary XDG Path**: `~/.config/ax/config.toml` (or `$XDG_CONFIG_HOME/ax/config.toml`).
-- **Modular Harness Configs**: Supplementary `*.toml` files in `~/.config/ax/harnesses/*.toml`.
-- **Legacy Fallback**: `~/.config/agymux/config.toml` (loaded automatically if primary config is absent).
-- **Internal Defaults**: If no file is present, `ax` automatically falls back to built-in defaults.
+- **Explicit flag / environment**: Config passed via CLI flags or `$HX_CONFIG`.
+- **Primary XDG Path**: `~/.config/hx/config.toml` (or `$XDG_CONFIG_HOME/hx/config.toml`).
+- **Modular Harness Configs**: Supplementary `*.toml` files in `~/.config/hx/harnesses/*.toml`.
+- **Legacy Migration**: `~/.config/ax/` and `~/.config/agymux/` (automatically migrated to `~/.config/hx/` on first launch).
+- **Internal Defaults**: If no file is present, `hx` automatically falls back to built-in defaults.
 
 Generated tmux profiles and snippets are synchronized to:
-- `~/.config/tmux/ax.conf` (or custom profile target).
+- `~/.config/tmux/hx.conf` (or custom profile target).
 
 Workspace layout snapshots are stored in:
-- `~/.config/ax/sessions/<project>.json`.
+- `~/.config/hx/sessions/<project>.json`.
 
 ---
 
@@ -129,7 +129,7 @@ ANTHROPIC_API_KEY = "your-api-key"
 
 | Key | Type | Default | Choices | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `prefix` | `string` | `"C-Space"` | Valid tmux key | Primary prefix key for all ax shortcuts. |
+| `prefix` | `string` | `"C-Space"` | Valid tmux key | Primary prefix key for all hx shortcuts. |
 | `bilingual_cyrillic` | `boolean` | `true` | `true`, `false` | Automatically bind paired RussianWin Cyrillic keys (e.g. `n` / `т`, `c` / `с`, `o` / `щ`, `x` / `ч`, `t` / `е`, `s` / `ы`, `p` / `з`) so layout switching never breaks shortcuts. |
 
 ---
@@ -138,13 +138,13 @@ ANTHROPIC_API_KEY = "your-api-key"
 
 | Key | Type | Default | Choices | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `isolated_socket` | `boolean` | `false` | `true`, `false` | Run ax sessions under a dedicated socket (`tmux -L ax`) isolated from default user sessions. |
+| `isolated_socket` | `boolean` | `false` | `true`, `false` | Run hx sessions under a dedicated socket (`tmux -L hx`) isolated from default user sessions. |
 
 ---
 
 ### `[harnesses.<name>]` — Pluggable Custom Harnesses
 
-Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separate files in `~/.config/ax/harnesses/<name>.toml`:
+Define custom agent harnesses directly in `~/.config/hx/config.toml` or as separate files in `~/.config/hx/harnesses/<name>.toml`:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -160,7 +160,7 @@ Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separ
 
 ## Status Indicator Legend
 
-`ax` renders real-time visual indicators directly inside each tab's title:
+`hx` renders real-time visual indicators directly inside each tab's title:
 
 | Glyph | Unicode | Meaning |
 | :---: | :---: | :--- |
@@ -178,7 +178,7 @@ Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separ
 
 ## Mouse Ergonomics & Protection
 
-`ax` features full OpenCode-style mouse handling with safety protections:
+`hx` features full OpenCode-style mouse handling with safety protections:
 
 ### 1. Left Click (`MouseDown1Status`)
 - **Clicking the tab body:** Switches to the clicked tab instantly (`switch-client -t =`).
@@ -211,11 +211,11 @@ Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separ
 ### 1. Top Spaced (`position = "top"`, `spacer_lines = 1`) — Default OpenCode Parity
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 ax │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 hx │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │ <- Row 1: Spacer
 ├────────────────────────────────────────────────────────────────────────┤
-│ $ ax run -H claude                                                     │ <- Row 2+: Terminal
+│ $ hx run -H claude                                                     │ <- Row 2+: Terminal
 │ Claude Code session ready.                                             │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
@@ -224,18 +224,18 @@ Define custom agent harnesses directly in `~/.config/ax/config.toml` or as separ
 ### 2. Top Compact (`position = "top"`, `spacer_lines = 0`)
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 ax │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 hx │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
-│ $ ax run -H agy                                                        │ <- Row 1+: Terminal
+│ $ hx run -H agy                                                        │ <- Row 1+: Terminal
 │ Pair programming session ready.                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Vertical IDE Rail (`ax layout` or `Ctrl+Space B` / `И`)
+### 3. Vertical IDE Rail (`hx layout` or `Ctrl+Space B` / `И`)
 When activated, horizontal status tabs hide (`status off`) and a vertical 42-column sidebar opens on the left (or right):
 ```text
 ┌──────────────────────────────────────────┬─────────────────────────────┐
-│ 󰘳 ax Sessions                       [1] │ $ ax run -H claude          │
+│ 󰘳 hx Sessions                       [1] │ $ hx run -H claude          │
 │                                          │                             │
 │ > 1  󰊠  ● fix-search                     │ Running agent loop...       │
 │      git: feature/search-revamp          │ Executed search_web: 4 hits │
@@ -259,7 +259,7 @@ When activated, horizontal status tabs hide (`status off`) and a vertical 42-col
 ### 1. OpenCode Parity (Default)
 Top tabs, 1-line breathing spacer, flat highlighted Octagon theme, and protected mouse close:
 ```toml
-# ~/.config/ax/config.toml
+# ~/.config/hx/config.toml
 
 [theme]
 preset = "default"
@@ -278,7 +278,7 @@ standard_width = 22
 ### 2. Multi-Harness Developer Setup
 Configured with multiple custom tools alongside Antigravity, Claude, and OpenCode:
 ```toml
-# ~/.config/ax/config.toml
+# ~/.config/hx/config.toml
 
 [general]
 startup_action = "ask"

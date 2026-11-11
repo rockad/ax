@@ -3,12 +3,12 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "ax",
+    name = "hx",
     author = "Aleksandr Korolev",
     version,
     disable_version_flag = true,
-    about = "OpenCode-style tabbed cockpit for Google Antigravity & Claude Code (agEmux)",
-    long_about = "A high-performance terminal multiplexer workspace manager for Google Antigravity (agy) and Claude Code (claude). Provides multi-turn tab navigation, instant window naming, and rich session search inside tmux."
+    about = "Terminal cockpit & multi-harness multiplexor for AI coding agents",
+    long_about = "A high-performance terminal multiplexer workspace manager for AI coding agents (Google Antigravity, Claude Code, OpenCode, Codex). Provides multi-turn tab navigation, instant window naming, and rich session search inside tmux."
 )]
 pub struct Cli {
     /// Print version information
@@ -112,7 +112,7 @@ pub enum Commands {
         conversation_id: String,
     },
 
-    /// List active ax sessions
+    /// List active hx sessions
     Ls,
 
     /// Bind a conversation ID to the active tmux tab
@@ -162,7 +162,7 @@ pub enum Commands {
         project: Option<String>,
     },
 
-    /// Manage and restore session snapshots (e.g. ax session restore)
+    /// Manage and restore session snapshots (e.g. hx session restore)
     Session {
         #[command(subcommand)]
         action: Option<SessionAction>,
@@ -192,7 +192,7 @@ pub enum Commands {
         path: Option<PathBuf>,
     },
 
-    /// Install or update ax lifecycle hooks in Antigravity and Claude Code configuration
+    /// Install or update hx lifecycle hooks in Antigravity and Claude Code configuration
     #[command(alias = "setup")]
     Install,
 }
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_cli_default_no_args() {
-        let cli = Cli::try_parse_from(["ax"]).expect("parsing succeeds");
+        let cli = Cli::try_parse_from(["hx"]).expect("parsing succeeds");
         assert!(cli.command.is_none());
         assert!(cli.project.is_none());
         assert!(cli.dir.is_none());
@@ -247,14 +247,14 @@ mod tests {
     #[test]
     fn test_cli_version_flag() {
         let err_v =
-            Cli::try_parse_from(["ax", "-v"]).expect_err("-v should trigger version display");
+            Cli::try_parse_from(["hx", "-v"]).expect_err("-v should trigger version display");
         assert_eq!(err_v.kind(), clap::error::ErrorKind::DisplayVersion);
 
         let err_upper =
-            Cli::try_parse_from(["ax", "-V"]).expect_err("-V should trigger version display");
+            Cli::try_parse_from(["hx", "-V"]).expect_err("-V should trigger version display");
         assert_eq!(err_upper.kind(), clap::error::ErrorKind::DisplayVersion);
 
-        let err_long = Cli::try_parse_from(["ax", "--version"])
+        let err_long = Cli::try_parse_from(["hx", "--version"])
             .expect_err("--version should trigger version display");
         assert_eq!(err_long.kind(), clap::error::ErrorKind::DisplayVersion);
     }
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_cli_global_flags() {
         let cli = Cli::try_parse_from([
-            "ax",
+            "hx",
             "--project",
             "my-proj",
             "--dir",
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_cli_attach_subcommand_with_forwarded_args() {
-        let cli = Cli::try_parse_from(["ax", "attach", "--", "--model", "gemini-flash"])
+        let cli = Cli::try_parse_from(["hx", "attach", "--", "--model", "gemini-flash"])
             .expect("parsing succeeds");
         match cli.command {
             Some(Commands::Attach { args }) => {
@@ -292,14 +292,14 @@ mod tests {
 
     #[test]
     fn test_cli_switch_subcommand() {
-        let cli_default = Cli::try_parse_from(["ax", "switch"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["hx", "switch"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::Switch { scope }) => assert_eq!(scope, ScopeArg::Local),
             other => panic!("expected Switch local, got {:?}", other),
         }
 
         let cli_global =
-            Cli::try_parse_from(["ax", "switch", "-s", "global"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "switch", "-s", "global"]).expect("parsing succeeds");
         match cli_global.command {
             Some(Commands::Switch { scope }) => assert_eq!(scope, ScopeArg::Global),
             other => panic!("expected Switch global, got {:?}", other),
@@ -308,39 +308,39 @@ mod tests {
 
     #[test]
     fn test_cli_project_and_helper_subcommands() {
-        let cli_proj = Cli::try_parse_from(["ax", "project"]).expect("parsing succeeds");
+        let cli_proj = Cli::try_parse_from(["hx", "project"]).expect("parsing succeeds");
         assert!(matches!(cli_proj.command, Some(Commands::Project)));
 
-        let cli_help = Cli::try_parse_from(["ax", "helper"]).expect("parsing succeeds");
+        let cli_help = Cli::try_parse_from(["hx", "helper"]).expect("parsing succeeds");
         assert!(matches!(cli_help.command, Some(Commands::Helper)));
 
-        let cli_ls = Cli::try_parse_from(["ax", "ls"]).expect("parsing succeeds");
+        let cli_ls = Cli::try_parse_from(["hx", "ls"]).expect("parsing succeeds");
         assert!(matches!(cli_ls.command, Some(Commands::Ls)));
     }
 
     #[test]
     fn test_cli_palette_subcommand() {
-        let cli = Cli::try_parse_from(["ax", "palette"]).expect("parsing succeeds");
+        let cli = Cli::try_parse_from(["hx", "palette"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::Palette { action }) => assert!(action.is_none()),
             other => panic!("expected Palette, got {:?}", other),
         }
 
         let cli_act =
-            Cli::try_parse_from(["ax", "palette", "-a", "rename"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "palette", "-a", "rename"]).expect("parsing succeeds");
         match cli_act.command {
             Some(Commands::Palette { action }) => assert_eq!(action.as_deref(), Some("rename")),
             other => panic!("expected Palette rename, got {:?}", other),
         }
 
-        let cli_reload = Cli::try_parse_from(["ax", "reload"]).expect("parsing succeeds");
+        let cli_reload = Cli::try_parse_from(["hx", "reload"]).expect("parsing succeeds");
         assert!(matches!(cli_reload.command, Some(Commands::Reload)));
     }
 
     #[test]
     fn test_cli_new_subcommand() {
         let cli =
-            Cli::try_parse_from(["ax", "new", "-n", "feature-tab", "-H", "claude", "--", "-c"])
+            Cli::try_parse_from(["hx", "new", "-n", "feature-tab", "-H", "claude", "--", "-c"])
                 .expect("parsing succeeds");
         match cli.command {
             Some(Commands::New {
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn test_cli_run_subcommand() {
         let cli = Cli::try_parse_from([
-            "ax",
+            "hx",
             "run",
             "-n",
             "custom-tab",
@@ -387,14 +387,14 @@ mod tests {
 
     #[test]
     fn test_cli_restore_subcommand() {
-        let cli_default = Cli::try_parse_from(["ax", "restore"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["hx", "restore"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::Restore { project }) => assert_eq!(project, None),
             other => panic!("expected Restore None, got {:?}", other),
         }
 
         let cli_proj =
-            Cli::try_parse_from(["ax", "restore", "my-project"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "restore", "my-project"]).expect("parsing succeeds");
         match cli_proj.command {
             Some(Commands::Restore { project }) => {
                 assert_eq!(project.as_deref(), Some("my-project"))
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_cli_rename_subcommand() {
-        let cli_default = Cli::try_parse_from(["ax", "rename"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["hx", "rename"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::Rename { title, target }) => {
                 assert_eq!(title, None);
@@ -415,7 +415,7 @@ mod tests {
         }
 
         let cli_full =
-            Cli::try_parse_from(["ax", "rename", "my-tab", "-t", ":2"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "rename", "my-tab", "-t", ":2"]).expect("parsing succeeds");
         match cli_full.command {
             Some(Commands::Rename { title, target }) => {
                 assert_eq!(title.as_deref(), Some("my-tab"));
@@ -425,7 +425,7 @@ mod tests {
         }
 
         let cli_alias =
-            Cli::try_parse_from(["ax", "rename-tab", "alias-tab"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "rename-tab", "alias-tab"]).expect("parsing succeeds");
         match cli_alias.command {
             Some(Commands::Rename { title, target }) => {
                 assert_eq!(title.as_deref(), Some("alias-tab"));
@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn test_cli_preview_subcommand() {
         let cli =
-            Cli::try_parse_from(["ax", "preview", "conv-uuid-456"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "preview", "conv-uuid-456"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::Preview { conversation_id }) => {
                 assert_eq!(conversation_id, "conv-uuid-456");
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_cli_bind_subcommand() {
-        let cli_no_id = Cli::try_parse_from(["ax", "bind"]).expect("parsing succeeds");
+        let cli_no_id = Cli::try_parse_from(["hx", "bind"]).expect("parsing succeeds");
         match cli_no_id.command {
             Some(Commands::Bind { conversation_id }) => {
                 assert!(conversation_id.is_none());
@@ -458,7 +458,7 @@ mod tests {
         }
 
         let cli_with_id =
-            Cli::try_parse_from(["ax", "bind", "conv-uuid-123"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "bind", "conv-uuid-123"]).expect("parsing succeeds");
         match cli_with_id.command {
             Some(Commands::Bind { conversation_id }) => {
                 assert_eq!(conversation_id.as_deref(), Some("conv-uuid-123"));
@@ -469,21 +469,21 @@ mod tests {
 
     #[test]
     fn test_cli_remote_control_flag() {
-        let cli_root = Cli::try_parse_from(["ax", "--remote-control"]).expect("parsing succeeds");
+        let cli_root = Cli::try_parse_from(["hx", "--remote-control"]).expect("parsing succeeds");
         assert!(cli_root.remote_control);
 
         let cli_attach =
-            Cli::try_parse_from(["ax", "attach", "--remote-control"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "attach", "--remote-control"]).expect("parsing succeeds");
         assert!(cli_attach.remote_control);
 
         let cli_run =
-            Cli::try_parse_from(["ax", "run", "--remote-control"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "run", "--remote-control"]).expect("parsing succeeds");
         assert!(cli_run.remote_control);
     }
 
     #[test]
     fn test_cli_hook_and_install_subcommands() {
-        let cli_hook = Cli::try_parse_from(["ax", "hook"]).expect("parsing succeeds");
+        let cli_hook = Cli::try_parse_from(["hx", "hook"]).expect("parsing succeeds");
         assert!(matches!(
             cli_hook.command,
             Some(Commands::Hook {
@@ -493,7 +493,7 @@ mod tests {
         ));
 
         let cli_hook_running =
-            Cli::try_parse_from(["ax", "hook", "--running", "0"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "hook", "--running", "0"]).expect("parsing succeeds");
         assert!(matches!(
             cli_hook_running.command,
             Some(Commands::Hook {
@@ -503,7 +503,7 @@ mod tests {
         ));
 
         let cli_hook_start =
-            Cli::try_parse_from(["ax", "hook", "--start"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "hook", "--start"]).expect("parsing succeeds");
         assert!(matches!(
             cli_hook_start.command,
             Some(Commands::Hook {
@@ -512,17 +512,17 @@ mod tests {
             })
         ));
 
-        let cli_install = Cli::try_parse_from(["ax", "install"]).expect("parsing succeeds");
+        let cli_install = Cli::try_parse_from(["hx", "install"]).expect("parsing succeeds");
         assert!(matches!(cli_install.command, Some(Commands::Install)));
 
-        let cli_setup = Cli::try_parse_from(["ax", "setup"]).expect("parsing succeeds");
+        let cli_setup = Cli::try_parse_from(["hx", "setup"]).expect("parsing succeeds");
         assert!(matches!(cli_setup.command, Some(Commands::Install)));
     }
 
     #[test]
     fn test_cli_close_window_subcommand() {
         let cli =
-            Cli::try_parse_from(["ax", "close-window", "close:@1"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "close-window", "close:@1"]).expect("parsing succeeds");
         match cli.command {
             Some(Commands::CloseWindow { target }) => {
                 assert_eq!(target.as_deref(), Some("close:@1"));
@@ -530,7 +530,7 @@ mod tests {
             other => panic!("expected CloseWindow, got {:?}", other),
         }
 
-        let cli_alias = Cli::try_parse_from(["ax", "close-tab"]).expect("parsing succeeds");
+        let cli_alias = Cli::try_parse_from(["hx", "close-tab"]).expect("parsing succeeds");
         match cli_alias.command {
             Some(Commands::CloseWindow { target }) => {
                 assert_eq!(target, None);
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn test_cli_join_and_unsplit_subcommands() {
-        let cli_join = Cli::try_parse_from(["ax", "join", "2", "-v"]).expect("parsing succeeds");
+        let cli_join = Cli::try_parse_from(["hx", "join", "2", "-v"]).expect("parsing succeeds");
         match cli_join.command {
             Some(Commands::Join { target, vertical }) => {
                 assert_eq!(target.as_deref(), Some("2"));
@@ -550,7 +550,7 @@ mod tests {
             other => panic!("expected Join, got {:?}", other),
         }
 
-        let cli_join_default = Cli::try_parse_from(["ax", "join"]).expect("parsing succeeds");
+        let cli_join_default = Cli::try_parse_from(["hx", "join"]).expect("parsing succeeds");
         match cli_join_default.command {
             Some(Commands::Join { target, vertical }) => {
                 assert_eq!(target, None);
@@ -559,20 +559,20 @@ mod tests {
             other => panic!("expected Join, got {:?}", other),
         }
 
-        let cli_unsplit = Cli::try_parse_from(["ax", "unsplit"]).expect("parsing succeeds");
+        let cli_unsplit = Cli::try_parse_from(["hx", "unsplit"]).expect("parsing succeeds");
         assert!(matches!(cli_unsplit.command, Some(Commands::Unsplit)));
     }
 
     #[test]
     fn test_cli_git_status_subcommand() {
-        let cli_default = Cli::try_parse_from(["ax", "git-status"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["hx", "git-status"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::GitStatus { path }) => assert_eq!(path, None),
             other => panic!("expected GitStatus, got {:?}", other),
         }
 
         let cli_path =
-            Cli::try_parse_from(["ax", "git-status", "/custom/path"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "git-status", "/custom/path"]).expect("parsing succeeds");
         match cli_path.command {
             Some(Commands::GitStatus { path }) => {
                 assert_eq!(path, Some(PathBuf::from("/custom/path")))
@@ -580,19 +580,19 @@ mod tests {
             other => panic!("expected GitStatus with path, got {:?}", other),
         }
 
-        let cli_alias1 = Cli::try_parse_from(["ax", "branch"]).expect("parsing succeeds");
+        let cli_alias1 = Cli::try_parse_from(["hx", "branch"]).expect("parsing succeeds");
         assert!(matches!(
             cli_alias1.command,
             Some(Commands::GitStatus { path: None })
         ));
 
-        let cli_alias2 = Cli::try_parse_from(["ax", "git-branch"]).expect("parsing succeeds");
+        let cli_alias2 = Cli::try_parse_from(["hx", "git-branch"]).expect("parsing succeeds");
         assert!(matches!(
             cli_alias2.command,
             Some(Commands::GitStatus { path: None })
         ));
 
-        let cli_alias3 = Cli::try_parse_from(["ax", "git-info"]).expect("parsing succeeds");
+        let cli_alias3 = Cli::try_parse_from(["hx", "git-info"]).expect("parsing succeeds");
         assert!(matches!(
             cli_alias3.command,
             Some(Commands::GitStatus { path: None })
@@ -601,14 +601,14 @@ mod tests {
 
     #[test]
     fn test_cli_session_subcommand() {
-        let cli_bare = Cli::try_parse_from(["ax", "session"]).expect("parsing succeeds");
+        let cli_bare = Cli::try_parse_from(["hx", "session"]).expect("parsing succeeds");
         match cli_bare.command {
             Some(Commands::Session { action }) => assert_eq!(action, None),
             other => panic!("expected Session None, got {:?}", other),
         }
 
         let cli_restore_default =
-            Cli::try_parse_from(["ax", "session", "restore"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "session", "restore"]).expect("parsing succeeds");
         match cli_restore_default.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Restore { project, snapshot }),
@@ -620,7 +620,7 @@ mod tests {
         }
 
         let cli_restore_proj =
-            Cli::try_parse_from(["ax", "session", "restore", "my-project", "12345678"])
+            Cli::try_parse_from(["hx", "session", "restore", "my-project", "12345678"])
                 .expect("parsing succeeds");
         match cli_restore_proj.command {
             Some(Commands::Session {
@@ -633,7 +633,7 @@ mod tests {
         }
 
         let cli_save_default =
-            Cli::try_parse_from(["ax", "session", "save"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "session", "save"]).expect("parsing succeeds");
         match cli_save_default.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Save { project, name }),
@@ -645,7 +645,7 @@ mod tests {
         }
 
         let cli_save_proj =
-            Cli::try_parse_from(["ax", "session", "save", "my-project", "my-snapshot"])
+            Cli::try_parse_from(["hx", "session", "save", "my-project", "my-snapshot"])
                 .expect("parsing succeeds");
         match cli_save_proj.command {
             Some(Commands::Session {
@@ -657,7 +657,7 @@ mod tests {
             other => panic!("expected Session Save project, got {:?}", other),
         }
 
-        let cli_history = Cli::try_parse_from(["ax", "session", "history", "my-project"])
+        let cli_history = Cli::try_parse_from(["hx", "session", "history", "my-project"])
             .expect("parsing succeeds");
         match cli_history.command {
             Some(Commands::Session {
@@ -667,7 +667,7 @@ mod tests {
         }
 
         let cli_ls =
-            Cli::try_parse_from(["ax", "session", "ls", "my-project"]).expect("parsing succeeds");
+            Cli::try_parse_from(["hx", "session", "ls", "my-project"]).expect("parsing succeeds");
         match cli_ls.command {
             Some(Commands::Session {
                 action: Some(SessionAction::Ls { project }),
@@ -678,24 +678,24 @@ mod tests {
 
     #[test]
     fn test_cli_fresh_and_restore_flags() {
-        let cli_fresh = Cli::try_parse_from(["ax", "-f"]).expect("parsing succeeds");
+        let cli_fresh = Cli::try_parse_from(["hx", "-f"]).expect("parsing succeeds");
         assert!(cli_fresh.fresh);
         assert!(!cli_fresh.restore);
 
-        let cli_restore = Cli::try_parse_from(["ax", "--restore"]).expect("parsing succeeds");
+        let cli_restore = Cli::try_parse_from(["hx", "--restore"]).expect("parsing succeeds");
         assert!(!cli_restore.fresh);
         assert!(cli_restore.restore);
     }
 
     #[test]
     fn test_cli_restart_command() {
-        let cli_default = Cli::try_parse_from(["ax", "restart"]).expect("parsing succeeds");
+        let cli_default = Cli::try_parse_from(["hx", "restart"]).expect("parsing succeeds");
         match cli_default.command {
             Some(Commands::Restart { target }) => assert_eq!(target, None),
             other => panic!("expected Restart default, got {:?}", other),
         }
 
-        let cli_target = Cli::try_parse_from(["ax", "restart", "%2"]).expect("parsing succeeds");
+        let cli_target = Cli::try_parse_from(["hx", "restart", "%2"]).expect("parsing succeeds");
         match cli_target.command {
             Some(Commands::Restart { target }) => assert_eq!(target.as_deref(), Some("%2")),
             other => panic!("expected Restart %2, got {:?}", other),

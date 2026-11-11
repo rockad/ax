@@ -75,7 +75,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &HelperState) {
     // Title line
     text_lines.push(Line::from(vec![Span::styled(
         format!(
-            "ax v{} — Keyboard Shortcuts & Commands",
+            "hx v{} — Keyboard Shortcuts & Commands",
             env!("CARGO_PKG_VERSION")
         ),
         Style::default()
@@ -131,7 +131,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &HelperState) {
     text_lines.push(shortcut_line("Ctrl+Space r  /  к", "Rename active tab"));
     text_lines.push(shortcut_line(
         "Ctrl+Space R  /  К",
-        "Reload ax configuration & layout",
+        "Reload hx configuration & layout",
     ));
     text_lines.push(shortcut_line(
         "Ctrl+Space f  /  а",

@@ -1251,13 +1251,13 @@ pub fn execute_selection(
                         &workdir.display().to_string(),
                         "-n",
                         "+ new",
-                        &format!("ax run --project '{}'", project),
+                        &format!("hx run --project '{}'", project),
                     ])
                     .status();
             } else {
                 let session_name = format!("agy-{}", project);
                 let config = crate::config::Config::load().unwrap_or_default();
-                let mut run_cmd = format!("ax run --project '{}'", project);
+                let mut run_cmd = format!("hx run --project '{}'", project);
                 if config.general.remote_control {
                     run_cmd.push_str(" --remote-control");
                 }
@@ -1319,30 +1319,30 @@ pub fn execute_selection(
             let run_cmd = match harness {
                 crate::core::AgentHarness::Antigravity => {
                     format!(
-                        "ax run -H agy --project '{}' --conversation '{}'",
+                        "hx run -H agy --project '{}' --conversation '{}'",
                         effective_project, conversation_id
                     )
                 }
                 crate::core::AgentHarness::ClaudeCode => {
                     format!(
-                        "ax run -H claude --project '{}' -- --resume '{}'",
+                        "hx run -H claude --project '{}' -- --resume '{}'",
                         effective_project, conversation_id
                     )
                 }
                 crate::core::AgentHarness::OpenCode => {
                     format!(
-                        "ax run -H opencode --project '{}' -- --session '{}'",
+                        "hx run -H opencode --project '{}' -- --session '{}'",
                         effective_project, conversation_id
                     )
                 }
                 crate::core::AgentHarness::PlainTerminal => {
-                    format!("ax run -H term --project '{}'", effective_project)
+                    format!("hx run -H term --project '{}'", effective_project)
                 }
                 crate::core::AgentHarness::Codex => {
-                    format!("ax run -H codex --project '{}'", effective_project)
+                    format!("hx run -H codex --project '{}'", effective_project)
                 }
                 crate::core::AgentHarness::Custom(ref c) => {
-                    format!("ax run -H '{}' --project '{}'", c, effective_project)
+                    format!("hx run -H '{}' --project '{}'", c, effective_project)
                 }
             };
 

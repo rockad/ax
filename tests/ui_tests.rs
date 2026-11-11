@@ -1,9 +1,9 @@
-use ax::cli::ScopeArg;
-use ax::ui::helper::{self, HelperState};
-use ax::ui::palette::{self, PaletteAction, PaletteState};
-use ax::ui::picker::{self, PickerState};
-use ax::ui::theme::{self, COLOR_BG, COLOR_GREEN, PL_LEFT, PL_RIGHT};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use hx::cli::ScopeArg;
+use hx::ui::helper::{self, HelperState};
+use hx::ui::palette::{self, PaletteAction, PaletteState};
+use hx::ui::picker::{self, PickerState};
+use hx::ui::theme::{self, COLOR_BG, COLOR_GREEN, PL_LEFT, PL_RIGHT};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use std::path::PathBuf;
@@ -312,7 +312,7 @@ fn test_palette_modal_render_and_fuzzy_filter() {
 fn test_picker_modal_render_and_scope_toggle() {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
-    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
+    let mut state = PickerState::new(ScopeArg::Local, "hx".to_string(), PathBuf::from("/tmp"));
 
     terminal
         .draw(|f| picker::render(f, f.area(), &mut state))
@@ -339,16 +339,16 @@ fn test_picker_modal_render_and_scope_toggle() {
 
 #[test]
 fn test_picker_category_cycling_and_filtering() {
-    use ax::core::AgentHarness;
-    use ax::ui::picker::{handle_key, CategoryFilter, ItemKind, PickerCandidate};
+    use hx::core::AgentHarness;
+    use hx::ui::picker::{handle_key, CategoryFilter, ItemKind, PickerCandidate};
 
-    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
+    let mut state = PickerState::new(ScopeArg::Local, "hx".to_string(), PathBuf::from("/tmp"));
     state.all_candidates = vec![
         PickerCandidate {
             display_label: "Tab 1".to_string(),
             match_text: "Tab 1 agy".to_string(),
             kind: ItemKind::OpenTab {
-                session: "agy-ax".to_string(),
+                session: "agy-hx".to_string(),
                 window_index: 1,
                 window_name: "agy".to_string(),
                 is_active: true,
@@ -361,7 +361,7 @@ fn test_picker_category_cycling_and_filtering() {
             display_label: "Tab 2".to_string(),
             match_text: "Tab 2 claude".to_string(),
             kind: ItemKind::OpenTab {
-                session: "claude-ax".to_string(),
+                session: "claude-hx".to_string(),
                 window_index: 2,
                 window_name: "claude".to_string(),
                 is_active: false,
@@ -377,7 +377,7 @@ fn test_picker_category_cycling_and_filtering() {
                 conversation_id: "conv-3".to_string(),
                 title: "opencode task".to_string(),
                 relative_time: "5m ago".to_string(),
-                project: "ax".to_string(),
+                project: "hx".to_string(),
                 step_count: 3,
                 harness: AgentHarness::OpenCode,
                 last_modified_epoch: 1000,
@@ -423,13 +423,13 @@ fn test_picker_category_cycling_and_filtering() {
 
 #[test]
 fn test_picker_collision_prompt_flow() {
-    use ax::core::AgentHarness;
-    use ax::ui::picker::{handle_key, ItemKind, PickerCandidate, PickerResult};
+    use hx::core::AgentHarness;
+    use hx::ui::picker::{handle_key, ItemKind, PickerCandidate, PickerResult};
 
-    let mut state = PickerState::new(ScopeArg::Local, "ax".to_string(), PathBuf::from("/tmp"));
+    let mut state = PickerState::new(ScopeArg::Local, "hx".to_string(), PathBuf::from("/tmp"));
     state
         .open_convs
-        .insert("conv-active".to_string(), ("agy-ax".to_string(), 2));
+        .insert("conv-active".to_string(), ("agy-hx".to_string(), 2));
 
     state.all_candidates = vec![PickerCandidate {
         display_label: "Hist Active".to_string(),
@@ -438,7 +438,7 @@ fn test_picker_collision_prompt_flow() {
             conversation_id: "conv-active".to_string(),
             title: "Active task".to_string(),
             relative_time: "just now".to_string(),
-            project: "ax".to_string(),
+            project: "hx".to_string(),
             step_count: 5,
             harness: AgentHarness::Antigravity,
             last_modified_epoch: 2000,

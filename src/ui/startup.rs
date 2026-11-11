@@ -174,7 +174,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &StartupState) {
         .split(modal_area);
 
     // 1. Header
-    let block = styled_block("ax Startup Lifecycle", true);
+    let block = styled_block("hx Startup Lifecycle", true);
     let title_p = Paragraph::new(Line::from(vec![
         Span::styled(" Project: ", Style::default().fg(COLOR_CYAN)),
         Span::styled(
@@ -250,7 +250,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &StartupState) {
     let footer_p = Paragraph::new(vec![
         Line::from(vec![Span::styled(
             format!(
-                "  {} Remember selection as default in ~/.config/ax/config.toml (Space/r)",
+                "  {} Remember selection as default in ~/.config/hx/config.toml (Space/r)",
                 checkbox
             ),
             if state.remember {

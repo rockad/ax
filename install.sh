@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh: Idempotent installer for ax
+# install.sh: Idempotent installer for hx
 
 set -euo pipefail
 
@@ -8,30 +8,30 @@ BIN_DIR="${HOME}/.local/bin"
 TMUX_CONF_DIR="${HOME}/.config/tmux"
 TMUX_CONF="${TMUX_CONF_DIR}/tmux.conf"
 
-echo "==> Installing ax from ${REPO_DIR}..."
+echo "==> Installing hx from ${REPO_DIR}..."
 
-# 1. Install ax binary into ~/.local/bin
+# 1. Install hx binary into ~/.local/bin
 mkdir -p "$BIN_DIR"
 # Clean up any legacy binaries or symlinks
-for legacy in agymux agemux agymux-tab-picker agymux-tab-runner agymux-palette agymux-project-picker agymux-helper agymux-preview; do
+for legacy in ax agymux agemux agymux-tab-picker agymux-tab-runner agymux-palette agymux-project-picker agymux-helper agymux-preview; do
     rm -f "${BIN_DIR}/$legacy"
 done
 
-if [[ -f "${REPO_DIR}/ax" ]]; then
+if [[ -f "${REPO_DIR}/hx" ]]; then
     echo "  -> Installing pre-built binary to $BIN_DIR"
-    cp -f "${REPO_DIR}/ax" "${BIN_DIR}/ax"
-    chmod +x "${BIN_DIR}/ax"
-elif [[ -f "${REPO_DIR}/target/release/ax" ]]; then
+    cp -f "${REPO_DIR}/hx" "${BIN_DIR}/hx"
+    chmod +x "${BIN_DIR}/hx"
+elif [[ -f "${REPO_DIR}/target/release/hx" ]]; then
     echo "  -> Linking release binary to $BIN_DIR"
-    ln -sf "${REPO_DIR}/target/release/ax" "${BIN_DIR}/ax"
+    ln -sf "${REPO_DIR}/target/release/hx" "${BIN_DIR}/hx"
 elif command -v cargo >/dev/null 2>&1; then
     echo "  -> Building release binary with cargo"
     (cd "${REPO_DIR}" && cargo build --release)
-    ln -sf "${REPO_DIR}/target/release/ax" "${BIN_DIR}/ax"
+    ln -sf "${REPO_DIR}/target/release/hx" "${BIN_DIR}/hx"
 elif [[ -x "${HOME}/.cargo/bin/cargo" ]]; then
     echo "  -> Building release binary with ~/.cargo/bin/cargo"
     (cd "${REPO_DIR}" && "${HOME}/.cargo/bin/cargo" build --release)
-    ln -sf "${REPO_DIR}/target/release/ax" "${BIN_DIR}/ax"
+    ln -sf "${REPO_DIR}/target/release/hx" "${BIN_DIR}/hx"
 else
     echo "Error: No binaries found and cargo is not available." >&2
     exit 1
@@ -43,21 +43,21 @@ mkdir -p "$TMUX_CONF_DIR"
 rm -f "${TMUX_CONF_DIR}/agymux.conf" "${TMUX_CONF_DIR}/agymux-tabs.conf"
 
 if [[ -d "${REPO_DIR}/.git" ]]; then
-    ln -sf "${REPO_DIR}/config/tmux/ax.conf" "${TMUX_CONF_DIR}/ax.conf"
-elif [[ -f "${REPO_DIR}/config/tmux/ax.conf" ]]; then
-    cp -f "${REPO_DIR}/config/tmux/ax.conf" "${TMUX_CONF_DIR}/ax.conf"
+    ln -sf "${REPO_DIR}/config/tmux/hx.conf" "${TMUX_CONF_DIR}/hx.conf"
+elif [[ -f "${REPO_DIR}/config/tmux/hx.conf" ]]; then
+    cp -f "${REPO_DIR}/config/tmux/hx.conf" "${TMUX_CONF_DIR}/hx.conf"
 fi
 
 if [[ -f "$TMUX_CONF" ]]; then
-    if ! grep -q "ax.conf" "$TMUX_CONF"; then
-        echo "  -> Adding ax.conf source directive to $TMUX_CONF"
+    if ! grep -q "hx.conf" "$TMUX_CONF"; then
+        echo "  -> Adding hx.conf source directive to $TMUX_CONF"
         cat << 'EOF' >> "$TMUX_CONF"
 
-# Source ax configuration & keybindings
-if-shell '[ -f ~/.config/tmux/ax.conf ]' 'source-file ~/.config/tmux/ax.conf'
+# Source hx configuration & keybindings
+if-shell '[ -f ~/.config/tmux/hx.conf ]' 'source-file ~/.config/tmux/hx.conf'
 EOF
     else
-        echo "  -> ax.conf directive already present in $TMUX_CONF"
+        echo "  -> hx.conf directive already present in $TMUX_CONF"
     fi
 fi
 
@@ -67,5 +67,5 @@ if command -v tmux >/dev/null 2>&1 && tmux has-session 2>/dev/null; then
     tmux source-file "$TMUX_CONF" 2>/dev/null || true
 fi
 
-echo "==> ax installation complete!"
-echo "    Run 'ax' to start or 'ax switch' for the tab switcher."
+echo "==> hx installation complete!"
+echo "    Run 'hx' to start or 'hx switch' for the tab switcher."
