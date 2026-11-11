@@ -1258,7 +1258,11 @@ pub fn execute_selection(
                 let session_name = format!("agy-{}", project);
                 let config = crate::config::Config::load().unwrap_or_default();
                 let mut run_cmd = format!("hx run --project '{}'", project);
-                if config.general.remote_control {
+                if config.general.remote_control
+                    && (config.general.default_harness.is_empty()
+                        || config.general.default_harness == "agy"
+                        || config.general.default_harness == "antigravity")
+                {
                     run_cmd.push_str(" --remote-control");
                 }
                 crate::tmux::TmuxDriver::ensure_session(

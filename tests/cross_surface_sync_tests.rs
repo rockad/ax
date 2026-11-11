@@ -77,6 +77,108 @@ fn test_is_remote_control_active_and_single_instance_gating() {
 }
 
 #[test]
+fn test_non_agy_harness_remote_control_isolation() {
+    use hx::core::harness::{
+        AgentHarness, AntigravityDriver, ClaudeCodeDriver, HarnessDriver, HarnessLaunchContext,
+        OpenCodeDriver, TerminalDriver,
+    };
+
+    // 1. Antigravity Driver MUST respect remote_control
+    let agy_driver = AntigravityDriver;
+    let ctx_agy_rc = HarnessLaunchContext {
+        project: "test-proj".to_string(),
+        remote_control: true,
+        ..Default::default()
+    };
+    let cmd_agy_rc = agy_driver.build_command(&ctx_agy_rc);
+    let args_agy_rc: Vec<String> = cmd_agy_rc
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+    assert!(
+        args_agy_rc.contains(&"--remote-control".to_string()),
+        "Antigravity driver must include --remote-control when requested"
+    );
+
+    let ctx_agy_norc = HarnessLaunchContext {
+        project: "test-proj".to_string(),
+        remote_control: false,
+        ..Default::default()
+    };
+    let cmd_agy_norc = agy_driver.build_command(&ctx_agy_norc);
+    let args_agy_norc: Vec<String> = cmd_agy_norc
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+    assert!(
+        !args_agy_norc.contains(&"--remote-control".to_string()),
+        "Antigravity driver must not include --remote-control when false"
+    );
+
+    // 2. Claude Code Driver MUST NOT inject Antigravity remote_control flag
+    let claude_driver = ClaudeCodeDriver;
+    let ctx_claude = HarnessLaunchContext {
+        project: "test-proj".to_string(),
+        remote_control: true,
+        ..Default::default()
+    };
+    let cmd_claude = claude_driver.build_command(&ctx_claude);
+    let args_claude: Vec<String> = cmd_claude
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+    assert!(
+        !args_claude.contains(&"--remote-control".to_string()),
+        "Claude Code driver must never inject agy --remote-control"
+    );
+
+    // 3. Plain Terminal Driver MUST NOT inject remote_control
+    let term_driver = TerminalDriver;
+    let ctx_term = HarnessLaunchContext {
+        project: "test-proj".to_string(),
+        remote_control: true,
+        ..Default::default()
+    };
+    let cmd_term = term_driver.build_command(&ctx_term);
+    let args_term: Vec<String> = cmd_term
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+    assert!(
+        !args_term.contains(&"--remote-control".to_string()),
+        "Plain Terminal driver must never inject agy --remote-control"
+    );
+
+    // 4. OpenCode Driver MUST NOT inject remote_control
+    let opencode_driver = OpenCodeDriver;
+    let ctx_opencode = HarnessLaunchContext {
+        project: "test-proj".to_string(),
+        remote_control: true,
+        ..Default::default()
+    };
+    let cmd_opencode = opencode_driver.build_command(&ctx_opencode);
+    let args_opencode: Vec<String> = cmd_opencode
+        .get_args()
+        .map(|s| s.to_string_lossy().to_string())
+        .collect();
+    assert!(
+        !args_opencode.contains(&"--remote-control".to_string()),
+        "OpenCode driver must never inject agy --remote-control"
+    );
+
+    // 5. Verify loose parsing for harnesses
+    assert_eq!(
+        AgentHarness::from_str_loose("term"),
+        AgentHarness::PlainTerminal
+    );
+    assert_eq!(
+        AgentHarness::from_str_loose("claude"),
+        AgentHarness::ClaudeCode
+    );
+    assert_eq!(AgentHarness::from_str_loose("agy"), AgentHarness::Antigravity);
+}
+
+#[test]
 fn test_cli_remote_control_flags() {
     // Global flag
     let cli = Cli::try_parse_from(["hx", "--remote-control"]).expect("parsing succeeds");

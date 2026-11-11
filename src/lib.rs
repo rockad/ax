@@ -171,7 +171,9 @@ pub fn run() -> Result<()> {
                 crate::core::AgentHarness::PlainTerminal => "term".to_string(),
                 _ => "+ new".to_string(),
             });
-            let requested_rc = remote_control || args.contains(&"--remote-control".to_string());
+            let is_agy = agent_harness == crate::core::AgentHarness::Antigravity;
+            let requested_rc =
+                is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
             let mut effective_remote_control = requested_rc;
             if requested_rc
                 && config.general.single_remote_control_instance
@@ -197,7 +199,7 @@ pub fn run() -> Result<()> {
             if effective_remote_control {
                 run_args.push_str(" --remote-control");
             }
-            let filtered_args: Vec<String> = if !effective_remote_control {
+            let filtered_args: Vec<String> = if is_agy && !effective_remote_control {
                 args.into_iter()
                     .filter(|a| a != "--remote-control")
                     .collect()
@@ -390,7 +392,17 @@ fn handle_attach(
     let _ = ensure_claude_hooks_installed();
     let _ = heal_unbound_windows(project);
 
-    let requested_rc = remote_control || args.contains(&"--remote-control".to_string());
+    let fallback_harness = if !config.general.default_harness.is_empty() {
+        config.general.default_harness.as_str()
+    } else {
+        "agy"
+    };
+    let effective_harness = harness.unwrap_or(fallback_harness);
+    let agent_harness = crate::core::AgentHarness::from_str_loose(effective_harness);
+    let is_agy = agent_harness == crate::core::AgentHarness::Antigravity;
+
+    let requested_rc =
+        is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
     let mut effective_remote_control = requested_rc;
     if requested_rc && config.general.single_remote_control_instance && is_remote_control_active() {
         effective_remote_control = false;
@@ -405,13 +417,6 @@ fn handle_attach(
             eprintln!("hx: Active remote-control instance already running on this machine (skipping --remote-control)");
         }
     }
-
-    let fallback_harness = if !config.general.default_harness.is_empty() {
-        config.general.default_harness.as_str()
-    } else {
-        "agy"
-    };
-    let effective_harness = harness.unwrap_or(fallback_harness);
 
     // Resolve active session: check explicit session_name first, then find by directory
     let active_session = if tmux::TmuxDriver::session_exists(session_name) {
@@ -524,11 +529,13 @@ fn handle_attach(
                     .args(["select-window", "-t", win_id])
                     .status();
             } else {
+                let req_agent_harness = crate::core::AgentHarness::from_str_loose(req_harness);
+                let req_is_agy = req_agent_harness == crate::core::AgentHarness::Antigravity;
                 let mut run_cmd = format!("hx run -H {} --project '{}'", req_harness, project);
-                if effective_remote_control {
+                if req_is_agy && effective_remote_control {
                     run_cmd.push_str(" --remote-control");
                 }
-                let filtered_args: Vec<&String> = if !effective_remote_control {
+                let filtered_args: Vec<&String> = if req_is_agy && !effective_remote_control {
                     args.iter().filter(|a| *a != "--remote-control").collect()
                 } else {
                     args.iter().collect()
@@ -633,10 +640,10 @@ fn handle_attach(
     // Session does not exist yet
     if !args.is_empty() {
         let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
-        if effective_remote_control {
+        if is_agy && effective_remote_control {
             run_cmd.push_str(" --remote-control");
         }
-        let filtered_args: Vec<&String> = if !effective_remote_control {
+        let filtered_args: Vec<&String> = if is_agy && !effective_remote_control {
             args.iter().filter(|a| *a != "--remote-control").collect()
         } else {
             args.iter().collect()
@@ -800,7 +807,7 @@ fn handle_attach(
     // If an explicit harness was requested, skip Ask and immediately create session
     if harness.is_some() {
         let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
-        if effective_remote_control {
+        if is_agy && effective_remote_control {
             run_cmd.push_str(" --remote-control");
         }
         let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
@@ -885,7 +892,7 @@ fn handle_attach(
     match startup_action {
         crate::config::StartupAction::New => {
             let mut run_cmd = format!("hx run -H {} --project '{}'", effective_harness, project);
-            if effective_remote_control {
+            if is_agy && effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
             let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
@@ -925,7 +932,7 @@ fn handle_attach(
             } else {
                 format!("hx run -H {} --project '{}'", effective_harness, project)
             };
-            if effective_remote_control {
+            if is_agy && effective_remote_control {
                 run_cmd.push_str(" --remote-control");
             }
             let tab_name = match crate::core::AgentHarness::from_str_loose(effective_harness) {
@@ -1319,7 +1326,12 @@ fn is_tmux_remote_control_active(my_pid: u32) -> bool {
     };
 
     let Ok(output) = Command::new("tmux")
-        .args(["list-windows", "-a", "-F", "#{pane_pid}:#{@remote_control}"])
+        .args([
+            "list-windows",
+            "-a",
+            "-F",
+            "#{window_id}:#{pane_pid}:#{@remote_control}:#{@harness}:#{pane_current_command}",
+        ])
         .output()
     else {
         return false;
@@ -1334,14 +1346,33 @@ fn is_tmux_remote_control_active(my_pid: u32) -> bool {
             continue;
         }
         let parts: Vec<&str> = trimmed.split(':').collect();
-        if parts.len() >= 2 {
-            let pane_pid_str = parts[0].trim();
-            let rc_val = parts[1].trim();
-            if rc_val == "1" {
-                if let Ok(pid) = pane_pid_str.parse::<u32>() {
-                    if pid != my_pid && Some(pid) != current_pane_pid && is_process_alive(pid) {
-                        return true;
-                    }
+        if parts.len() >= 3 {
+            let win_id = parts[0].trim();
+            let pane_pid_str = parts[1].trim();
+            let rc_val = parts[2].trim();
+            let harness = if parts.len() >= 4 { parts[3].trim() } else { "" };
+            let current_cmd = if parts.len() >= 5 { parts[4].trim() } else { "" };
+
+            if rc_val != "1" {
+                continue;
+            }
+
+            let is_non_agy_harness =
+                !harness.is_empty() && harness != "agy" && harness != "antigravity";
+            let is_non_agy_cmd =
+                !current_cmd.is_empty() && !current_cmd.starts_with("agy") && current_cmd != "hx";
+
+            if is_non_agy_harness || is_non_agy_cmd {
+                // Auto-heal stale or mistakenly assigned remote_control flag on non-agy windows
+                let _ = Command::new("tmux")
+                    .args(["set-window-option", "-t", win_id, "@remote_control", "0"])
+                    .status();
+                continue;
+            }
+
+            if let Ok(pid) = pane_pid_str.parse::<u32>() {
+                if pid != my_pid && Some(pid) != current_pane_pid && is_process_alive(pid) {
+                    return true;
                 }
             }
         }
@@ -1536,7 +1567,9 @@ fn run_runner(
         conv_id = latest_existing_id.clone();
     }
 
-    let requested_rc = remote_control || args.contains(&"--remote-control".to_string());
+    let is_agy = agent_harness == crate::core::AgentHarness::Antigravity;
+    let requested_rc =
+        is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
     let mut effective_remote_control = requested_rc;
 
     if requested_rc && config.general.single_remote_control_instance && is_remote_control_active() {
