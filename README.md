@@ -4,7 +4,7 @@
 
 **`hx`** is a high-performance terminal cockpit and multi-harness multiplexer for AI coding agents inside `tmux`.
 
-It combines OpenCode's visual delight and spatial workflow ergonomics (top tab strip, two-pane switcher, command palette, live transcript previews, git worktree isolation, protected mouse tab closing, and vertical IDE sidebar) with first-class multi-harness execution across the premier AI coding agents — built in native Rust for sub-millisecond cold starts and zero runtime dependencies.
+It combines high-ergonomic spatial workflow tooling (top tab strip, two-pane switcher, command palette, live transcript previews, git worktree isolation, protected mouse tab closing, and vertical IDE sidebar) with first-class multi-harness execution across the premier AI coding agents (Claude Code, Google Antigravity, OpenCode, Codex, and terminal shells) — built in native Rust for sub-millisecond cold starts and zero runtime dependencies.
 
 ---
 

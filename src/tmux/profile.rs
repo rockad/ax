@@ -24,18 +24,17 @@ impl TmuxProfile {
             "set -ga terminal-features \",xterm-ghostty:RGB:sync:cstyle:ccolour\"".to_string(),
             "set -s escape-time 0".to_string(),
             "set -g focus-events on".to_string(),
-            "set-hook -g pane-focus-in \"set-option -w @external_sync 0\"".to_string(),
+            "set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\"".to_string(),
             "set-hook -g client-detached \"run-shell 'hx reload'\"".to_string(),
             "set-hook -g window-unlinked \"run-shell 'hx reload'\"".to_string(),
             "set -g mouse on".to_string(),
             "set -g base-index 1".to_string(),
             "setw -g pane-base-index 1".to_string(),
             "set -g renumber-windows on".to_string(),
-            "setw -g monitor-activity on".to_string(),
+            "setw -g monitor-activity off".to_string(),
             "set -g visual-activity off".to_string(),
             "setw -g monitor-bell on".to_string(),
             "set -g visual-bell off".to_string(),
-            "set -g activity-action other".to_string(),
             "set -g bell-action other".to_string(),
         ];
 
@@ -146,7 +145,7 @@ impl TmuxProfile {
         }
 
         let default_window_format = format!(
-            "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] #I #{{?#{{@remote_control}},󰢹 ,󰂞 }}{title_token}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] #I #{{?#{{@remote_control}},󰢹 ,󰛌 }}{title_token}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I #{{?#{{@remote_control}},#[fg=colour75]󰢹 #[fg=colour250],}}{title_token}{close_suffix_dim}#[default]}}}}"
+            "#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] #I #{{?#{{||:#{{window_bell_flag}},#{{@alert}}}},#[fg=colour220]󰂞 #[fg=colour39],}}#{{?#{{@remote_control}},󰢹 ,󰛌 }}{title_token}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I #{{?#{{||:#{{window_bell_flag}},#{{@alert}}}},#[fg=colour220]󰂞 #[fg=colour250],}}#{{?#{{@remote_control}},#[fg=colour75]󰢹 #[fg=colour250],}}{title_token}{close_suffix_dim}#[default]}}"
         );
         let window_format = config
             .theme
@@ -419,15 +418,15 @@ mod tests {
         assert!(!content.contains(''));
         assert!(!content.contains(''));
         assert!(content.contains("set -g renumber-windows on"));
-        assert!(content.contains("setw -g monitor-activity on"));
+        assert!(content.contains("setw -g monitor-activity off"));
         assert!(content.contains("set -g visual-activity off"));
         assert!(content.contains("setw -g monitor-bell on"));
         assert!(content.contains("set -g visual-bell off"));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
-        assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @external_sync 0\""));
+        assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\""));
         assert!(content.contains("set-hook -g client-detached \"run-shell 'hx reload'\""));
         assert!(content.contains("set-hook -g window-unlinked \"run-shell 'hx reload'\""));
-        let expected_win_fmt = "setw -g window-status-format \"#{?#{||:#{window_activity_flag},#{window_bell_flag}},#[fg=colour16]#[bg=colour220]#[bold] #I #{?#{@remote_control},󰢹 ,󰂞 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{@remote_control},󰢹 ,󰛌 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}\"";
+        let expected_win_fmt = "setw -g window-status-format \"#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{||:#{window_bell_flag},#{@alert}},#[fg=colour220]󰂞 #[fg=colour39],}#{?#{@remote_control},󰢹 ,󰛌 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{||:#{window_bell_flag},#{@alert}},#[fg=colour220]󰂞 #[fg=colour250],}#{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}\"";
         let expected_current_fmt = "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I #{?#{@remote_control},#[fg=colour234]󰢹 #[fg=colour234],}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default]\"";
         let actual_win_fmt = content
             .lines()
@@ -565,7 +564,7 @@ mod tests {
         let content = TmuxProfile::render_content(&config);
 
         assert!(content.contains("set -g renumber-windows on"));
-        assert!(content.contains("setw -g monitor-activity on"));
+        assert!(content.contains("setw -g monitor-activity off"));
         assert!(content.contains("set -g visual-activity off"));
         assert!(content.contains("setw -g monitor-bell on"));
         assert!(content.contains("set -g visual-bell off"));

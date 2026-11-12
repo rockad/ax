@@ -2351,6 +2351,26 @@ pub fn run_hook(_running: Option<&str>, _start: bool) -> Result<()> {
         let _ = tmux::TmuxDriver::set_window_option(&target_win, "@claude_running", "0");
         let _ = tmux::TmuxDriver::set_window_option(&target_win, "@agy_running", "0");
 
+        // Check if target window is currently active; set @alert only for background tabs
+        let is_active = Command::new("tmux")
+            .args(["display-message", "-p", "-t", &target_win, "#{window_active}"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim() == "1")
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false);
+
+        if !is_active {
+            let _ = tmux::TmuxDriver::set_window_option(&target_win, "@alert", "1");
+        } else {
+            let _ = tmux::TmuxDriver::set_window_option(&target_win, "@alert", "0");
+        }
+
         if let Some(clean) = resolved_clean_title {
             let user_renamed = Command::new("tmux")
                 .args([
@@ -3224,9 +3244,16 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
     }
 
     if let Some(root_obj) = root.as_object_mut() {
-        if let Some(hooks_obj) = root_obj.get_mut("hooks").and_then(|h| h.as_object_mut()) {
-            let prune_hook_cmd = |event_arr: &mut Vec<serde_json::Value>| {
-                event_arr.retain(|item| {
+        let hooks_val = root_obj
+            .entry("hooks")
+            .or_insert_with(|| serde_json::json!({}));
+        if !hooks_val.is_object() {
+            *hooks_val = serde_json::json!({});
+        }
+        if let Some(hooks_obj) = hooks_val.as_object_mut() {
+            // Prune any hx hook from UserPromptSubmit (no running indicators)
+            if let Some(submit_arr) = hooks_obj.get_mut("UserPromptSubmit").and_then(|v| v.as_array_mut()) {
+                submit_arr.retain(|item| {
                     if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
                         if cmd.contains("hx hook") || cmd.contains("ax hook") || cmd.contains("agymux hook") {
                             return false;
@@ -3244,13 +3271,63 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
                     }
                     true
                 });
-            };
-
-            if let Some(submit_arr) = hooks_obj.get_mut("UserPromptSubmit").and_then(|v| v.as_array_mut()) {
-                prune_hook_cmd(submit_arr);
             }
-            if let Some(stop_arr) = hooks_obj.get_mut("Stop").and_then(|v| v.as_array_mut()) {
-                prune_hook_cmd(stop_arr);
+
+            // Ensure Stop hook has "hx hook" to set turn-completion alerts
+            let stop_val = hooks_obj
+                .entry("Stop")
+                .or_insert_with(|| serde_json::json!([]));
+            if !stop_val.is_array() {
+                *stop_val = serde_json::json!([]);
+            }
+            if let Some(stop_arr) = stop_val.as_array_mut() {
+                // Prune any legacy "hx hook --running" commands
+                stop_arr.retain(|item| {
+                    if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
+                        if cmd.contains("--running") || cmd.contains("ax hook") || cmd.contains("agymux hook") {
+                            return false;
+                        }
+                    }
+                    if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
+                        let has_cmd = sub_hooks.iter().any(|sub| {
+                            sub.get("command").and_then(|c| c.as_str())
+                                .map(|c| c.contains("--running") || c.contains("ax hook") || c.contains("agymux hook"))
+                                .unwrap_or(false)
+                        });
+                        if has_cmd {
+                            return false;
+                        }
+                    }
+                    true
+                });
+
+                let already_present = stop_arr.iter().any(|item| {
+                    if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
+                        if cmd == "hx hook" {
+                            return true;
+                        }
+                    }
+                    if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
+                        if sub_hooks.iter().any(|sub| {
+                            sub.get("command").and_then(|c| c.as_str()) == Some("hx hook")
+                        }) {
+                            return true;
+                        }
+                    }
+                    false
+                });
+
+                if !already_present {
+                    let hook_entry = serde_json::json!({
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "hx hook"
+                            }
+                        ]
+                    });
+                    stop_arr.push(hook_entry);
+                }
             }
         }
     }
@@ -3740,7 +3817,8 @@ mod tests {
         assert_eq!(submit_arr.len(), 1);
         assert_eq!(submit_arr[0]["hooks"][0]["command"], "echo keep-me");
         let stop_arr = hooks["Stop"].as_array().unwrap();
-        assert_eq!(stop_arr.len(), 0);
+        assert_eq!(stop_arr.len(), 1);
+        assert_eq!(stop_arr[0]["hooks"][0]["command"], "hx hook");
     }
 
     #[test]
