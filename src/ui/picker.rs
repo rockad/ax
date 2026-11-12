@@ -846,7 +846,7 @@ fn render_preview_content(
                 Style::default().fg(COLOR_FG),
             )]));
             lines.push(Line::from(vec![Span::styled(
-                "│  Running turn status displays live in status bar (●). │",
+                "│  Unread response alerts display with bell icon (󰂞). │",
                 Style::default().fg(COLOR_FG),
             )]));
             lines.push(Line::from(vec![Span::styled(

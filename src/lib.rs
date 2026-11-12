@@ -2067,15 +2067,8 @@ fn check_workspace_matches(raw_ws: &str, pane_path: &str) -> bool {
 }
 
 /// Lifecycle hook invoked by Antigravity or harnesses on turn events to synchronize tab titles and running status
-pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
+pub fn run_hook(_running: Option<&str>, _start: bool) -> Result<()> {
     use std::io::{IsTerminal, Read};
-
-    let is_running = start
-        || matches!(
-            running,
-            Some("1") | Some("true") | Some("on") | Some("start")
-        );
-    let running_val = if is_running { "1" } else { "0" };
 
     let mut input = String::new();
     if !std::io::stdin().is_terminal() {
@@ -2353,13 +2346,10 @@ pub fn run_hook(running: Option<&str>, start: bool) -> Result<()> {
     });
 
     if let Some(target_win) = target_win_opt {
-        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@running", running_val);
-        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@claude_running", running_val);
-        if running_val == "0" {
-            let _ = tmux::TmuxDriver::set_window_option(&target_win, "@agy_running", "0");
-        } else {
-            let _ = tmux::TmuxDriver::set_window_option(&target_win, "@agy_running", "1");
-        }
+        // Clear any legacy @running flags if present
+        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@running", "0");
+        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@claude_running", "0");
+        let _ = tmux::TmuxDriver::set_window_option(&target_win, "@agy_running", "0");
 
         if let Some(clean) = resolved_clean_title {
             let user_renamed = Command::new("tmux")
@@ -3134,13 +3124,6 @@ pub fn ensure_hook_installed_at(hook_path: &Path) -> Result<PathBuf> {
 
     let hook_entry = serde_json::json!({
         "enabled": true,
-        "PreInvocation": [
-            {
-                "type": "command",
-                "command": "hx hook --running 1",
-                "timeout": 5
-            }
-        ],
         "Stop": [
             {
                 "type": "command",
@@ -3241,61 +3224,33 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
     }
 
     if let Some(root_obj) = root.as_object_mut() {
-        let hooks_val = root_obj
-            .entry("hooks")
-            .or_insert_with(|| serde_json::json!({}));
-        if !hooks_val.is_object() {
-            *hooks_val = serde_json::json!({});
-        }
-        if let Some(hooks_obj) = hooks_val.as_object_mut() {
-            let merge_hook_event = |event_arr: &mut Vec<serde_json::Value>, target_cmd: &str| {
-                let already_present = event_arr.iter().any(|item| {
+        if let Some(hooks_obj) = root_obj.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+            let prune_hook_cmd = |event_arr: &mut Vec<serde_json::Value>| {
+                event_arr.retain(|item| {
                     if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
-                        if cmd == target_cmd {
-                            return true;
+                        if cmd.contains("hx hook") || cmd.contains("ax hook") || cmd.contains("agymux hook") {
+                            return false;
                         }
                     }
                     if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
-                        if sub_hooks.iter().any(|sub| {
-                            sub.get("command").and_then(|c| c.as_str()) == Some(target_cmd)
-                        }) {
-                            return true;
+                        let has_cmd = sub_hooks.iter().any(|sub| {
+                            sub.get("command").and_then(|c| c.as_str())
+                                .map(|c| c.contains("hx hook") || c.contains("ax hook") || c.contains("agymux hook"))
+                                .unwrap_or(false)
+                        });
+                        if has_cmd {
+                            return false;
                         }
                     }
-                    false
+                    true
                 });
-
-                if !already_present {
-                    let hook_entry = serde_json::json!({
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": target_cmd
-                            }
-                        ]
-                    });
-                    event_arr.push(hook_entry);
-                }
             };
 
-            let submit_val = hooks_obj
-                .entry("UserPromptSubmit")
-                .or_insert_with(|| serde_json::json!([]));
-            if !submit_val.is_array() {
-                *submit_val = serde_json::json!([]);
+            if let Some(submit_arr) = hooks_obj.get_mut("UserPromptSubmit").and_then(|v| v.as_array_mut()) {
+                prune_hook_cmd(submit_arr);
             }
-            if let Some(submit_arr) = submit_val.as_array_mut() {
-                merge_hook_event(submit_arr, "hx hook --running 1");
-            }
-
-            let stop_val = hooks_obj
-                .entry("Stop")
-                .or_insert_with(|| serde_json::json!([]));
-            if !stop_val.is_array() {
-                *stop_val = serde_json::json!([]);
-            }
-            if let Some(stop_arr) = stop_val.as_array_mut() {
-                merge_hook_event(stop_arr, "hx hook --running 0");
+            if let Some(stop_arr) = hooks_obj.get_mut("Stop").and_then(|v| v.as_array_mut()) {
+                prune_hook_cmd(stop_arr);
             }
         }
     }
@@ -3742,10 +3697,31 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let settings_path = temp_dir.path().join("settings.json");
 
-        // Write existing dummy settings with permissions and custom fields
+        // Write existing settings with permissions, outputStyle, and legacy hx hooks
         let initial_json = r#"{
   "permissions": { "allow": ["Bash(git status)"] },
-  "outputStyle": "Concise"
+  "outputStyle": "Concise",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "hx hook --running 1" }
+        ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "echo keep-me" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "hx hook --running 0" }
+        ]
+      }
+    ]
+  }
 }"#;
         std::fs::write(&settings_path, initial_json).unwrap();
 
@@ -3757,13 +3733,14 @@ mod tests {
         assert_eq!(read_back["outputStyle"], "Concise");
         assert_eq!(read_back["permissions"]["allow"][0], "Bash(git status)");
 
-        // Verify hooks
+        // Verify legacy hx hooks are pruned while custom hooks remain
         let hooks = &read_back["hooks"];
         assert!(hooks.is_object());
-        let submit_cmd = &hooks["UserPromptSubmit"][0]["hooks"][0]["command"];
-        assert_eq!(submit_cmd, "hx hook --running 1");
-        let stop_cmd = &hooks["Stop"][0]["hooks"][0]["command"];
-        assert_eq!(stop_cmd, "hx hook --running 0");
+        let submit_arr = hooks["UserPromptSubmit"].as_array().unwrap();
+        assert_eq!(submit_arr.len(), 1);
+        assert_eq!(submit_arr[0]["hooks"][0]["command"], "echo keep-me");
+        let stop_arr = hooks["Stop"].as_array().unwrap();
+        assert_eq!(stop_arr.len(), 0);
     }
 
     #[test]
@@ -3779,14 +3756,7 @@ mod tests {
 
         let read_back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-        assert_eq!(
-            read_back["hooks"]["UserPromptSubmit"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(read_back["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert_eq!(read_back["model"], "sonnet");
     }
 
     #[test]

@@ -31,6 +31,12 @@ impl TmuxProfile {
             "set -g base-index 1".to_string(),
             "setw -g pane-base-index 1".to_string(),
             "set -g renumber-windows on".to_string(),
+            "setw -g monitor-activity on".to_string(),
+            "set -g visual-activity off".to_string(),
+            "setw -g monitor-bell on".to_string(),
+            "set -g visual-bell off".to_string(),
+            "set -g activity-action other".to_string(),
+            "set -g bell-action other".to_string(),
         ];
 
         // Status bar layout (inherits terminal background and foreground by default)
@@ -140,7 +146,7 @@ impl TmuxProfile {
         }
 
         let default_window_format = format!(
-            "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] #I #{{?#{{||:#{{@running}},#{{@agy_running}}}},#[fg=colour220]#[bold]● #[fg=colour16],#{{?#{{@remote_control}},󰢹 ,󰂞 }}}}{title_token}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] #I #{{?#{{||:#{{@running}},#{{@agy_running}}}},#[fg=colour220]#[bold]● #[fg=colour39],#{{?#{{@remote_control}},󰢹 ,󰛌 }}}}{title_token}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I #{{?#{{||:#{{@running}},#{{@agy_running}}}},#[fg=colour220]#[bold]● #[fg=colour250],#{{?#{{@remote_control}},#[fg=colour75]󰢹 #[fg=colour250],}}}}{title_token}{close_suffix_dim}#[default]}}}}"
+            "#{{?#{{||:#{{window_activity_flag}},#{{window_bell_flag}}}},#[fg=colour16]#[bg=colour220]#[bold] #I #{{?#{{@remote_control}},󰢹 ,󰂞 }}{title_token}{close_suffix}#[default],#{{?#{{@external_sync}},#[fg=colour39]#[bg=colour237]#[bold] #I #{{?#{{@remote_control}},󰢹 ,󰛌 }}{title_token}{close_suffix}#[default],#[fg=colour250]#[bg=colour237] #I #{{?#{{@remote_control}},#[fg=colour75]󰢹 #[fg=colour250],}}{title_token}{close_suffix_dim}#[default]}}}}"
         );
         let window_format = config
             .theme
@@ -154,7 +160,7 @@ impl TmuxProfile {
 
         // Active window format: focused tab using muted teal accent (colour73) with dark ink text
         let default_active_window_format = format!(
-            "#[fg=colour234]#[bg=colour73]#[bold] #I #{{?#{{||:#{{@running}},#{{@agy_running}}}},#[fg=colour220]#[bold]● #[fg=colour234],#{{?#{{@remote_control}},#[fg=colour234]󰢹 #[fg=colour234],}}}}{title_token}{close_suffix}#[default]"
+            "#[fg=colour234]#[bg=colour73]#[bold] #I #{{?#{{@remote_control}},#[fg=colour234]󰢹 #[fg=colour234],}}{title_token}{close_suffix}#[default]"
         );
         let active_window_format = config
             .theme
@@ -412,12 +418,17 @@ mod tests {
         // Flat tabs and terminal inheritance by default (zero hardcoded theme, zero rounded glyphs)
         assert!(!content.contains(''));
         assert!(!content.contains(''));
+        assert!(content.contains("set -g renumber-windows on"));
+        assert!(content.contains("setw -g monitor-activity on"));
+        assert!(content.contains("set -g visual-activity off"));
+        assert!(content.contains("setw -g monitor-bell on"));
+        assert!(content.contains("set -g visual-bell off"));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
         assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @external_sync 0\""));
         assert!(content.contains("set-hook -g client-detached \"run-shell 'hx reload'\""));
         assert!(content.contains("set-hook -g window-unlinked \"run-shell 'hx reload'\""));
-        let expected_win_fmt = "setw -g window-status-format \"#{?#{||:#{window_activity_flag},#{window_bell_flag}},#[fg=colour16]#[bg=colour220]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour16],#{?#{@remote_control},󰢹 ,󰂞 }}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour39],#{?#{@remote_control},󰢹 ,󰛌 }}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour250],#{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}\"";
-        let expected_current_fmt = "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I #{?#{||:#{@running},#{@agy_running}},#[fg=colour220]#[bold]● #[fg=colour234],#{?#{@remote_control},#[fg=colour234]󰢹 #[fg=colour234],}}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default]\"";
+        let expected_win_fmt = "setw -g window-status-format \"#{?#{||:#{window_activity_flag},#{window_bell_flag}},#[fg=colour16]#[bg=colour220]#[bold] #I #{?#{@remote_control},󰢹 ,󰂞 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{@remote_control},󰢹 ,󰛌 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}}\"";
+        let expected_current_fmt = "setw -g window-status-current-format \"#[fg=colour234]#[bg=colour73]#[bold] #I #{?#{@remote_control},#[fg=colour234]󰢹 #[fg=colour234],}#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default]\"";
         let actual_win_fmt = content
             .lines()
             .find(|l| l.starts_with("setw -g window-status-format "))
@@ -553,6 +564,11 @@ mod tests {
         let config = Config::default();
         let content = TmuxProfile::render_content(&config);
 
+        assert!(content.contains("set -g renumber-windows on"));
+        assert!(content.contains("setw -g monitor-activity on"));
+        assert!(content.contains("set -g visual-activity off"));
+        assert!(content.contains("setw -g monitor-bell on"));
+        assert!(content.contains("set -g visual-bell off"));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
         assert!(content.contains("set -g status-left \"#{?#{client_prefix},#[fg=black]#[bg=brightred]#[bold] 󰘳 PREFIX #[default] ,}\""));
         assert!(content.contains("set -g pane-border-status bottom"));
