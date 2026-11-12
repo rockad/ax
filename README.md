@@ -74,11 +74,10 @@ It combines OpenCode's visual delight and spatial workflow ergonomics (top tab s
 
 | Glyph | Meaning | Lifecycle |
 | :---: | :--- | :--- |
-| **`●`** | **Active Turn Running** | Golden amber dot indicates an agent turn is actively processing in that tab. |
-| **`󰢹`** | **Remote Control Session** | Displayed when a session runs with `--remote-control` active. |
+| **`󰂞`** | **Unread Response / Activity Alert** | Native tmux window activity alert triggered when a background tab produces terminal output, finishes an agent turn, or rings the terminal bell. Displays against a high-contrast yellow background (`#I 󰂞 <name>`). Clears automatically upon switching to the tab. |
+| **`󰢹`** | **Remote Control Session** | Displayed when a session runs with `--remote-control` active (Antigravity web surface sync). |
 | **`󰛌`** | **External / Worktree Sync** | Changes synced from another workspace. Clears automatically on pane focus. |
-| **`󰂞`** | **Alert / Activity Flag** | Signals completed background turn, test failure, or terminal bell. |
-| **`󰅖`** | **Interactive Close Button** | Mouse-clickable close button bound to safe tab termination. |
+| **`󰅖`** | **Interactive Close Button** | Mouse-clickable close button bound to safe tab termination with last-tab guard. |
 
 ### Mouse Controls
 
@@ -137,28 +136,50 @@ cp target/release/hx ~/.local/bin/
 Usage: hx [OPTIONS] [COMMAND]
 
 Commands:
-  attach   Attach to active session or start session in current directory (default)
-  switch   Open two-pane conversation & tab picker modal
-  project  Open project switcher modal
-  palette  Open quick command palette modal
-  helper   Display keyboard shortcuts cheatsheet modal
-  new      Open a new conversation tab in current session
-  bind     Bind a conversation to the current tab
-  join     Join another tab into current window as a split pane (-v for vertical)
-  unsplit  Break current split pane into its own standalone tab
-  run      Internal process runner with instant prompt-based window naming
-  preview  Render rich preview for a conversation ID
-  layout   Toggle OpenCode-style vertical IDE sidebar layout or switch mode
-  rail     Run interactive vertical sidebar rail TUI
-  ls       List active hx sessions
-  help     Print help
+  attach        Attach to active session or start session in current directory (default)
+  switch        Open two-pane conversation & tab picker modal
+  project       Open project switcher modal
+  palette       Open quick command palette modal
+  helper        Display keyboard shortcuts cheatsheet modal
+  new           Open a new conversation tab in current session
+  run           Internal process runner with instant prompt-based window naming
+  preview       Render rich preview for a conversation ID
+  ls            List active hx sessions
+  bind          Bind a conversation ID to the active tmux tab
+  close-window  Safely close a window/tab by id or status range, unbinding from tab registry
+  reload        Reload configuration, theme, and keybindings in active session
+  join          Join another tab into current window as a split pane
+  unsplit       Break current split pane into its own standalone tab
+  restore       Restore session tabs and split layouts from saved snapshot
+  session       Manage and restore session snapshots (e.g. hx session restore)
+  restart       Restart the harness running in the active (or target) pane in-place
+  rename        Rename active tab and synchronize title to backing harness conversation
+  git-status    Output git branch and ahead/behind status formatted for tmux pane border
+  install       Install or update hx lifecycle hooks in Antigravity and Claude Code configuration
+  help          Print help
 
 Options:
   -p, --project <PROJECT>  Override project session name
   -C, --dir <DIR>          Working directory (default: current directory)
   -d, --direct             Direct execution without tmux
-  -V, --version            Print version
+      --remote-control     Enable remote control mode (Google Antigravity web surface sync)
+  -H, --harness <HARNESS>  Override agent harness (e.g. agy, claude, opencode, codex, term)
+  -f, --fresh              Start a fresh session without restoring previous layout
+  -r, --restore            Restore previous session layout
+  -v, --version            Print version
 ```
+
+---
+
+## Native Activity Alerts & Hook Integration
+
+`hx` uses native tmux activity monitoring rather than polling or synthetic status loops:
+
+- **Built-in Activity & Bell Alerts**: When background tabs produce terminal output, finish a turn, or ring the terminal bell (`\a`), tmux automatically raises `window_activity_flag`. `hx` highlights the tab in amber/yellow (`#I 󰂞 <name>`). Visiting the tab clears the alert immediately.
+- **Hook Lifecycle (`hx install`)**:
+  - **Google Antigravity (`~/.gemini/config/hooks.json`)**: Configures a lightweight `Stop` hook (`hx hook`) to dynamically update tmux tab titles from SQLite conversation summaries when turns conclude.
+  - **Claude Code (`~/.claude/settings.json`)**: Clean zero-hook operation. Claude Code runs without process spawning overhead, relying entirely on tmux native activity detection.
+  - Run `hx install` at any time to verify and configure hooks.
 
 ---
 

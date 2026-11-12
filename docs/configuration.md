@@ -211,7 +211,7 @@ Define custom agent harnesses directly in `~/.config/hx/config.toml` or as separ
 ### 1. Top Spaced (`position = "top"`, `spacer_lines = 1`) — Default OpenCode Parity
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 hx │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖                     │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │ <- Row 1: Spacer
 ├────────────────────────────────────────────────────────────────────────┤
@@ -224,7 +224,7 @@ Define custom agent harnesses directly in `~/.config/hx/config.toml` or as separ
 ### 2. Top Compact (`position = "top"`, `spacer_lines = 0`)
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖      ● RUNNING 12:45 hx │ <- Row 0: Tabs
+│ #S  󰘳  1 󰚩 main 󰅖   2 󰊠 auth-fix 󰢹 󰅖   3 󰘐 test 󰅖                     │ <- Row 0: Tabs
 ├────────────────────────────────────────────────────────────────────────┤
 │ $ hx run -H agy                                                        │ <- Row 1+: Terminal
 │ Pair programming session ready.                                        │
@@ -237,7 +237,7 @@ When activated, horizontal status tabs hide (`status off`) and a vertical 42-col
 ┌──────────────────────────────────────────┬─────────────────────────────┐
 │ 󰘳 hx Sessions                       [1] │ $ hx run -H claude          │
 │                                          │                             │
-│ > 1  󰊠  ● fix-search                     │ Running agent loop...       │
+│ > 1  󰊠    fix-search                     │ Running agent loop...       │
 │      git: feature/search-revamp          │ Executed search_web: 4 hits │
 │      turns: 12  tokens: 42.1k           │                             │
 │                                          │                             │
