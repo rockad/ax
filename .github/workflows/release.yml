@@ -68,9 +68,9 @@ jobs:
             cargo build --release --target x86_64-apple-darwin
             cargo build --release --target aarch64-apple-darwin
             mkdir -p target/universal-apple-darwin/release
-            lipo -create -output target/universal-apple-darwin/release/ax \
-              target/x86_64-apple-darwin/release/ax \
-              target/aarch64-apple-darwin/release/ax
+            lipo -create -output target/universal-apple-darwin/release/hx \
+              target/x86_64-apple-darwin/release/hx \
+              target/aarch64-apple-darwin/release/hx
           elif [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }}
           else
@@ -81,15 +81,15 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
-          ARCHIVE_NAME="ax-${TAG}-${{ matrix.target }}"
+          ARCHIVE_NAME="hx-${TAG}-${{ matrix.target }}"
           PKG_DIR="dist/${ARCHIVE_NAME}"
           mkdir -p "${PKG_DIR}/config/tmux"
 
-          cp "target/${{ matrix.target }}/release/ax" "${PKG_DIR}/"
+          cp "target/${{ matrix.target }}/release/hx" "${PKG_DIR}/"
           cp README.md LICENSE "${PKG_DIR}/"
-          cp config/tmux/ax.conf "${PKG_DIR}/config/tmux/"
+          cp config/tmux/hx.conf "${PKG_DIR}/config/tmux/"
           cp install.sh "${PKG_DIR}/"
-          chmod +x "${PKG_DIR}/ax" "${PKG_DIR}/install.sh"
+          chmod +x "${PKG_DIR}/hx" "${PKG_DIR}/install.sh"
 
           tar -czf "dist/${ARCHIVE_NAME}.tar.gz" -C dist "${ARCHIVE_NAME}"
 

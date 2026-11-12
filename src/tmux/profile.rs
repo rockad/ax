@@ -24,7 +24,8 @@ impl TmuxProfile {
             "set -ga terminal-features \",xterm-ghostty:RGB:sync:cstyle:ccolour\"".to_string(),
             "set -s escape-time 0".to_string(),
             "set -g focus-events on".to_string(),
-            "set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\"".to_string(),
+            "set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\""
+                .to_string(),
             "set-hook -g client-detached \"run-shell 'hx reload'\"".to_string(),
             "set-hook -g window-unlinked \"run-shell 'hx reload'\"".to_string(),
             "set -g mouse on".to_string(),
@@ -423,7 +424,9 @@ mod tests {
         assert!(content.contains("setw -g monitor-bell on"));
         assert!(content.contains("set -g visual-bell off"));
         assert!(content.contains("set -g status-style \"bg=default,fg=default\""));
-        assert!(content.contains("set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\""));
+        assert!(content.contains(
+            "set-hook -g pane-focus-in \"set-option -w @alert 0; set-option -w @external_sync 0\""
+        ));
         assert!(content.contains("set-hook -g client-detached \"run-shell 'hx reload'\""));
         assert!(content.contains("set-hook -g window-unlinked \"run-shell 'hx reload'\""));
         let expected_win_fmt = "setw -g window-status-format \"#{?#{@external_sync},#[fg=colour39]#[bg=colour237]#[bold] #I #{?#{||:#{window_bell_flag},#{@alert}},#[fg=colour220]󰂞 #[fg=colour39],}#{?#{@remote_control},󰢹 ,󰛌 }#{=22:window_name}#[range=user|close:#{window_id}] 󰅖#[norange] #[default],#[fg=colour250]#[bg=colour237] #I #{?#{||:#{window_bell_flag},#{@alert}},#[fg=colour220]󰂞 #[fg=colour250],}#{?#{@remote_control},#[fg=colour75]󰢹 #[fg=colour250],}#{=22:window_name}#[range=user|close:#{window_id}] #[fg=colour244]󰅖#[fg=colour250]#[norange] #[default]}\"";

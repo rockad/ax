@@ -175,7 +175,10 @@ fn test_non_agy_harness_remote_control_isolation() {
         AgentHarness::from_str_loose("claude"),
         AgentHarness::ClaudeCode
     );
-    assert_eq!(AgentHarness::from_str_loose("agy"), AgentHarness::Antigravity);
+    assert_eq!(
+        AgentHarness::from_str_loose("agy"),
+        AgentHarness::Antigravity
+    );
 }
 
 #[test]

@@ -401,8 +401,7 @@ fn handle_attach(
     let agent_harness = crate::core::AgentHarness::from_str_loose(effective_harness);
     let is_agy = agent_harness == crate::core::AgentHarness::Antigravity;
 
-    let requested_rc =
-        is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
+    let requested_rc = is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
     let mut effective_remote_control = requested_rc;
     if requested_rc && config.general.single_remote_control_instance && is_remote_control_active() {
         effective_remote_control = false;
@@ -1350,8 +1349,16 @@ fn is_tmux_remote_control_active(my_pid: u32) -> bool {
             let win_id = parts[0].trim();
             let pane_pid_str = parts[1].trim();
             let rc_val = parts[2].trim();
-            let harness = if parts.len() >= 4 { parts[3].trim() } else { "" };
-            let current_cmd = if parts.len() >= 5 { parts[4].trim() } else { "" };
+            let harness = if parts.len() >= 4 {
+                parts[3].trim()
+            } else {
+                ""
+            };
+            let current_cmd = if parts.len() >= 5 {
+                parts[4].trim()
+            } else {
+                ""
+            };
 
             if rc_val != "1" {
                 continue;
@@ -1568,8 +1575,7 @@ fn run_runner(
     }
 
     let is_agy = agent_harness == crate::core::AgentHarness::Antigravity;
-    let requested_rc =
-        is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
+    let requested_rc = is_agy && (remote_control || args.contains(&"--remote-control".to_string()));
     let mut effective_remote_control = requested_rc;
 
     if requested_rc && config.general.single_remote_control_instance && is_remote_control_active() {
@@ -2353,7 +2359,13 @@ pub fn run_hook(_running: Option<&str>, _start: bool) -> Result<()> {
 
         // Check if target window is currently active; set @alert only for background tabs
         let is_active = Command::new("tmux")
-            .args(["display-message", "-p", "-t", &target_win, "#{window_active}"])
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                &target_win,
+                "#{window_active}",
+            ])
             .output()
             .ok()
             .and_then(|o| {
@@ -3252,17 +3264,28 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
         }
         if let Some(hooks_obj) = hooks_val.as_object_mut() {
             // Prune any hx hook from UserPromptSubmit (no running indicators)
-            if let Some(submit_arr) = hooks_obj.get_mut("UserPromptSubmit").and_then(|v| v.as_array_mut()) {
+            if let Some(submit_arr) = hooks_obj
+                .get_mut("UserPromptSubmit")
+                .and_then(|v| v.as_array_mut())
+            {
                 submit_arr.retain(|item| {
                     if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
-                        if cmd.contains("hx hook") || cmd.contains("ax hook") || cmd.contains("agymux hook") {
+                        if cmd.contains("hx hook")
+                            || cmd.contains("ax hook")
+                            || cmd.contains("agymux hook")
+                        {
                             return false;
                         }
                     }
                     if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
                         let has_cmd = sub_hooks.iter().any(|sub| {
-                            sub.get("command").and_then(|c| c.as_str())
-                                .map(|c| c.contains("hx hook") || c.contains("ax hook") || c.contains("agymux hook"))
+                            sub.get("command")
+                                .and_then(|c| c.as_str())
+                                .map(|c| {
+                                    c.contains("hx hook")
+                                        || c.contains("ax hook")
+                                        || c.contains("agymux hook")
+                                })
                                 .unwrap_or(false)
                         });
                         if has_cmd {
@@ -3284,14 +3307,22 @@ pub fn ensure_claude_hooks_installed_at(settings_path: &Path) -> Result<PathBuf>
                 // Prune any legacy "hx hook --running" commands
                 stop_arr.retain(|item| {
                     if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
-                        if cmd.contains("--running") || cmd.contains("ax hook") || cmd.contains("agymux hook") {
+                        if cmd.contains("--running")
+                            || cmd.contains("ax hook")
+                            || cmd.contains("agymux hook")
+                        {
                             return false;
                         }
                     }
                     if let Some(sub_hooks) = item.get("hooks").and_then(|h| h.as_array()) {
                         let has_cmd = sub_hooks.iter().any(|sub| {
-                            sub.get("command").and_then(|c| c.as_str())
-                                .map(|c| c.contains("--running") || c.contains("ax hook") || c.contains("agymux hook"))
+                            sub.get("command")
+                                .and_then(|c| c.as_str())
+                                .map(|c| {
+                                    c.contains("--running")
+                                        || c.contains("ax hook")
+                                        || c.contains("agymux hook")
+                                })
                                 .unwrap_or(false)
                         });
                         if has_cmd {
