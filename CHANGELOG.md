@@ -1,3 +1,14 @@
+## [0.8.7] - 2026-11-12
+
+### 🚀 Features
+
+- Harness-agnostic tab alerts: remove `@running`, `@agy_running`, and `@claude_running` window options in favor of tmux native `window_activity_flag` with alert bell icon (`󰂞`)
+- Streamline hooks: prune `hx hook` from Claude Code `settings.json` and remove `PreInvocation` from Antigravity `hooks.json`, keeping only `Stop: hx hook` for title synchronization
+
+### 🐛 Bug Fixes
+
+- *(tmux)* Enable `monitor-activity on`, `visual-activity off`, `monitor-bell on`, and `activity-action other` in tmux profile and `hx.conf` so background tab output triggers activity alerts reliably
+
 ## [0.8.6] - 2026-11-11
 
 ### 🚀 Features

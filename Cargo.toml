@@ -1,6 +1,6 @@
 [package]
 name = "hx"
-version = "0.8.6"
+version = "0.8.7"
 default-run = "hx"
 edition = "2021"
 authors = ["Aleksandr Korolev"]
